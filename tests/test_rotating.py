@@ -1,0 +1,85 @@
+"""Contract for the rotating-frame restricted integrator (written first).
+
+The rotating frame is the memory's natural coordinate system: the primaries
+sit still, L4/L5 are fixed points, and the resonant angle is just atan2(y, x).
+It must agree with the full inertial N-body integrator wherever they overlap,
+and it must support a time-dependent mass ratio mu(t) — the write mechanism.
+"""
+
+import numpy as np
+import pytest
+
+from orbital import memory, nbody, rotating, theory
+
+
+class TestAgreesWithFullNBody:
+    def test_trajectory_matches_inertial_integrator(self):
+        """Same L4 tadpole, two engines: the rotating-frame restricted run must
+        reproduce the full 3-body inertial run (transformed) to high accuracy."""
+        cell = memory.make_cell("L4", libration_deg=6.0)
+        full = nbody.integrate(cell, 10 * memory.PERIOD, n_samples=500)
+        # transform the inertial particle trajectory into the rotating frame
+        t = full["t"]
+        xy = full["traj"][2]
+        c, s = np.cos(-t), np.sin(-t)
+        ref = np.column_stack([c * xy[:, 0] - s * xy[:, 1],
+                               s * xy[:, 0] + c * xy[:, 1]])
+
+        state0 = rotating.from_inertial(cell[2]["pos"], cell[2]["vel"], t=0.0)
+        run = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=500)
+        assert np.max(np.linalg.norm(run["xy"] - ref, axis=1)) < 1e-6
+
+    def test_jacobi_conserved_at_constant_mu(self):
+        state0 = rotating.lagrange_tadpole("L4", libration_deg=6.0)
+        run = rotating.integrate(state0, 40 * memory.PERIOD, n_samples=2000)
+        C = run["jacobi"]
+        assert (C.max() - C.min()) < 1e-9
+
+    def test_L4_is_a_fixed_point(self):
+        pos = np.array([0.5 - memory.MU, np.sqrt(3) / 2])
+        run = rotating.integrate(np.array([*pos, 0.0, 0.0]),
+                                 20 * memory.PERIOD, n_samples=400)
+        assert np.max(np.linalg.norm(run["xy"] - pos, axis=1)) < 1e-3
+
+
+class TestPhiReadout:
+    def test_phi_is_plain_polar_angle(self):
+        """In the rotating frame the resonant angle is just atan2(y,x)."""
+        state0 = rotating.lagrange_tadpole("L4", libration_deg=6.0)
+        run = rotating.integrate(state0, 30 * memory.PERIOD, n_samples=1500)
+        label, center, amp = memory.classify(run["phi"])
+        assert label == "L4"
+        assert abs(center - 60) < 6
+
+    def test_blank_medium_circulates(self):
+        """A co-orbital particle outside the co-orbital zone (da larger than
+        the horseshoe width ~ mu^(1/3)) drifts through all longitudes — an
+        unwritten (blank) medium reads 'erased' and truly circulates."""
+        state0 = rotating.circular_coorbital(phi0_deg=90.0, da=0.06)
+        run = rotating.integrate(state0, 60 * memory.PERIOD, n_samples=3000,
+                                 mu=1e-5)
+        assert memory.classify(run["phi"])[0] == "erased"
+        unwrapped = np.unwrap(np.radians(run["phi"]))
+        drift = unwrapped[-1] - unwrapped[0]
+        assert abs(drift) > 2 * np.pi                       # full circulation
+        assert drift == pytest.approx(-1.5 * 0.06 * 60 * memory.PERIOD,
+                                      rel=0.25)             # matches -1.5 da t
+
+
+class TestTimeDependentMu:
+    def test_constant_callable_matches_scalar(self):
+        state0 = rotating.lagrange_tadpole("L4", libration_deg=6.0)
+        a = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=400)
+        b = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=400,
+                               mu=lambda t: memory.MU)
+        assert np.allclose(a["xy"], b["xy"], atol=1e-9)
+
+    def test_growth_ramp_is_smooth_and_bounded(self):
+        ramp = rotating.smooth_ramp(mu0=2e-4, mu1=3e-3, t_ramp=100.0)
+        ts = np.linspace(-5, 200, 1000)
+        vals = np.array([ramp(t) for t in ts])
+        assert vals.min() >= 2e-4 - 1e-12
+        assert vals.max() <= 3e-3 + 1e-12
+        assert np.all(np.diff(vals) >= -1e-12)  # monotone
+        assert ramp(0.0) == pytest.approx(2e-4)
+        assert ramp(150.0) == pytest.approx(3e-3)

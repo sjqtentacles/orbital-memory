@@ -1,138 +1,131 @@
 # Orbital Memory
 
-**A nonvolatile memory bit made of gravity — one that holds its value the way Jupiter's Trojan asteroids have held their positions for 4.5 billion years.**
+**A complete, nonvolatile memory cell made of gravity — write, hold, read, erase — that stores its bit the way Jupiter's Trojans and Saturn's co-orbital moons store theirs.**
 
-Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/slingshot-computing) does *logic* with transient gravitational flybys — and is fundamentally memoryless — this one does the other half of a computer: **storage**. A bit is stored as *which stable island a body orbits in*. It's persistent, self-protecting, and requires no forces but `F = Gm₁m₂/r²`.
+Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/slingshot-computing) does *logic* with transient gravitational flybys — and is fundamentally memoryless — this one is the other half of a computer: **storage**. A bit is stored as *which stable island a moonlet orbits in*. No forces but `F = Gm₁m₂/r²`.
 
 <p align="center">
-  <img src="docs/orbital_3d.gif" width="560" alt="A rotating 3D view: two inclined Trojan orbits coiling up and down through a tilted orbital plane, parked at the L4 and L5 corners">
+  <img src="docs/write.gif" width="520" alt="Rotating frame: a horseshoe moonlet sweeps the ring while the secondary grows, then pinches into a tadpole at L4 — the bit is written">
 </p>
 
-<p align="center"><em>An inclined Trojan bit in 3D: the particle librates at a Lagrange corner (that's the bit) while bobbing through the orbital plane once per orbit.</em></p>
+<p align="center"><em><b>Writing a bit by growing a planet.</b> The blank medium is a horseshoe moonlet; a slow mass-growth pulse pinches it into L4 (bit 1) or L5 (bit 0) — selected purely by pulse <b>timing</b>. This is the mechanism by which a growing Jupiter captured its Trojans.</em></p>
 
 ---
 
-## The idea
+## The full memory cycle
 
-In the circular restricted three-body problem — a heavy **primary**, a **secondary**, and a massless **test body** — there are two triangular equilibrium points, **L4** (60° ahead of the secondary) and **L5** (60° behind). A body near one of them doesn't fall in or drift away; it *librates* in a stable "tadpole" orbit around it. The two islands are separated by a **separatrix**, so a small nudge can't move the body from one to the other.
+| Operation | Mechanism | Physics |
+|---|---|---|
+| **HOLD** | tadpole libration around L4/L5 | topological protection (invariant island, KAM) |
+| **WRITE** | grow the secondary's mass — the horseshoe pinch | adiabatic capture (Henrard, Neishtadt) |
+| **READ** | which side the resonant angle librates on | the separatrix-crossing classifier |
+| **ERASE** | any kick past the noise margin | separatrix crossing, `C_J` drops below the held value |
 
-That's a bit:
+- librating around **L4** (60° ahead of the secondary) → reads **1**
+- librating around **L5** (60° behind) → reads **0**
+- horseshoe / circulation → **erased / blank**
 
-- librating around **L4** → reads **1**
-- librating around **L5** → reads **0**
+**This is moon-scale hardware.** Saturn's moons **Telesto** and **Calypso** ride Tethys's L4/L5, **Helene** and **Polydeuces** ride Dione's, and **Janus & Epimetheus** live on the horseshoe orbits our blank medium uses. The dynamics depend only on the mass ratio `μ`, so the same code covers star+planet, planet+moon, and moon+moonlet.
 
-**This is moon-scale hardware, not a toy.** Saturn's little moons **Telesto** and **Calypso** ride in the L4/L5 points of **Tethys**, and **Helene** and **Polydeuces** in those of **Dione** — real co-orbital moons that *are* this exact cell, holding their "bit" over the age of the solar system. The dynamics depend only on the mass ratio `μ`, so the same code covers star+planet, planet+moon, and moon+co-orbital-moonlet; only the libration timescale (`~1/√μ`) changes.
-
-<p align="center">
-  <img src="docs/flipflop_2d.gif" width="440" alt="Rotating frame: a particle librates at L4 (holding bit = 1), then a kick pushes it across the separatrix and it circulates away (erased)">
-</p>
-
-<p align="center"><em>The noise margin, as motion: the bit holds, until a kick past the separatrix erases it.</em></p>
-
-## What the demo shows
-
-```
-python -m demos.flipflop_demo
-```
-
-**1 · It holds.** Both states librate steadily around ±60° for 80 orbits at an energy drift of `3e-11`. This is the thing flyby logic fundamentally cannot do — retain state. Nature's version (Jupiter's Trojans) has held for ~4.5 Gyr.
-
-**2 · It has a noise margin.** Kicks below **~3.5% of the orbital speed** leave the bit intact (just a wider libration); above it, the particle crosses the separatrix and is ejected — erased. A real, quantifiable memory margin.
+## The states of the medium
 
 <p align="center">
-  <img src="docs/flipflop.png" width="760" alt="Left: rotating-frame tadpoles at L4 and L5. Right: the resonant angle holding flat around plus and minus 60 degrees for 80 orbits.">
+  <img src="docs/anatomy.png" width="560" alt="Rotating-frame orbit families: cyan tadpole at L4, pink tadpole at L5, amber horseshoe sweeping the ring, dashed grey circulation">
 </p>
 
-## The physics finding
+## The write: timing is the data
 
-The memory is protected **topologically, not dissipatively.** L4/L5 are extrema of the effective potential, stable only because of the velocity-dependent Coriolis force. Add friction and you kill that stabilization: **drag destabilizes the Lagrange points** (verified in code). So there's no attractor pulling the bit back to a clean value; instead the bit is held by the *geometry of phase space* — an invariant island bounded by a separatrix, the KAM / Nekhoroshev way. Refresh isn't damping; it's the topology.
+Same blank horseshoe, same growth pulse — only the **firing time** differs. The moonlet alternates sides of the ring as it runs its horseshoe; the pinch captures it into whichever island it is transiting when the growing tadpole band engulfs its orbit:
 
-### The conserved quantity
+<p align="center">
+  <img src="docs/timing.png" width="720" alt="Write timing diagram: pulse delay of 12 orbits writes 1, delays near 30 and 36 write 0, other delays remain erased guard bands">
+</p>
 
-The rigorous backbone is the **Jacobi constant** `C_J` — the rotating-frame analogue of energy, and the one conserved quantity of this problem. `orbital/theory.py` computes it, and the test suite pins the memory to it:
+Why it must be this way — three write mechanisms, two of which provably fail:
 
-- a **held** bit sits at `C_J ≈ C_L4 = 3 − μ(1−μ)` (the exact triangular value; sim matches to ~1e-4) and conserves it to **~1e-12**;
-- **writing energy** into the cell (a kick) *lowers* `C_J`; push it past the separatrix and the tadpole becomes a horseshoe — the bit erases.
+1. **Impulsive kicks cannot write.** A conservative kick moves the state along the energy surface; measured, every super-threshold kick scatters the moonlet out of the resonance. Kicks only erase.
+2. **Dissipation cannot write.** L4/L5 are Coriolis-stabilized potential extrema — drag *destabilizes* them (verified in code). There is no attractor to relax into.
+3. **A slow parameter change can.** Adiabatic capture needs no aim, only timing — robustness is the adiabatic theorem's gift. The write pulse is `μ(t)`: mass transferred from primary to secondary at fixed total, so the circular kinematics stay exact throughout.
 
-So the noise margin isn't just an empirical 3.5% — it's a statement about `C_J` crossing the separatrix value, and it's tested as such.
+The written bit then **survives an engine swap**: written in the fast rotating-frame integrator, each bit is handed to the full inertial N-body integrator and held for 40 more orbits (test-enforced).
 
-A consequence: **writing** (flipping 0↔1) is genuinely subtle — you can't just drag a particle into the island, because drag repels it. Real Trojan capture happens through slow orbital migration and adiabatic resonance capture (Henrard, Neishtadt). That's the honest frontier of this project, and the natural place for a proper Hamiltonian-theory pass.
+## The energy landscape
+
+<p align="center">
+  <img src="docs/landscape.png" width="560" alt="The rotating-frame effective potential with zero-velocity curves, the five Lagrange points, and the two stored tadpole orbits">
+</p>
+
+The rigorous backbone is the **Jacobi constant** `C_J` — the one conserved quantity of the circular restricted three-body problem. A held bit sits at the exact triangular value `C_L4 = 3 − μ(1−μ)` (sim matches to ~1e-4, conserved to ~1e-12); writing energy in (a kick) lowers `C_J` toward the separatrix; past it, the bit erases. The noise margin — kicks below **~3.5% of orbital speed** are harmless — is a statement about `C_J`, and tested as one.
+
+<p align="center">
+  <img src="docs/flipflop_2d.gif" width="440" alt="A particle librates at L4 holding bit 1, then a super-threshold kick sends it across the separatrix and it circulates away erased">
+</p>
 
 ## 3D
 
-The dynamics generalize cleanly: `orbital/nbody.py` infers its dimension from the bodies, so the same integrator runs the flat bit and an **inclined** Trojan (`demos/flipflop_3d.py`), which holds the L4/L5 bit in-plane *and* oscillates ±0.16 through the orbital plane once per orbit — real out-of-plane motion, drift `1.8e-11`. The rotating-camera GIF at the top is that, not a projected 2D scene.
+`orbital/nbody.py` infers its dimension from the bodies, so the same integrator runs the flat cell and an **inclined** Trojan (`demos/flipflop_3d.py`) that holds its bit while bobbing ±0.16 through the orbital plane once per orbit — genuinely three-dimensional storage, drift `1.8e-11`:
+
+<p align="center">
+  <img src="docs/orbital_3d.gif" width="520" alt="Rotating 3D camera: two inclined Trojan orbits coiling through the tilted orbital plane at the L4 and L5 corners">
+</p>
 
 ## Run it
 
 ```bash
 pip install -r requirements.txt
 
-python -m demos.flipflop_demo   # HOLD + NOISE MARGIN, writes out/flipflop.{png,json}
-python -m demos.flipflop_3d     # inclined Trojan, writes docs/orbital_3d.gif
-python -m demos.make_gifs       # the 2D hold->erase gif
-python -m pytest                # 37-test suite
+python -m demos.flipflop_demo    # HOLD + NOISE MARGIN (+ Jacobi readout)
+python -m demos.write_demo       # WRITE: timing diagram + the write gif
+python -m demos.landscape        # the energy-landscape & anatomy figures
+python -m demos.flipflop_3d      # the inclined-Trojan 3D gif
+python -m demos.make_gifs        # the 2D hold->erase gif
+python -m pytest                 # 51-test suite
 ```
 
-## Tests
+## Tests (TDD, physics-validated)
 
-A TDD suite (`python -m pytest`, 37 tests) checks the integrator against
-closed-form physics, not just against itself:
+51 tests check the simulation against closed-form theory, not just against itself:
 
-- **Kepler** — a light moon on a circular orbit stays circular and obeys
-  Kepler's third law (period = `2π√(a³/GM)`).
-- **Conservation** — energy (`< 1e-9`) and momentum in 2D and 3D; the
-  barycenter stays pinned at the origin (the readout depends on it).
-- **Lagrange theory** — L4/L5 form an exact equilateral triangle and are true
-  equilibria; the measured tadpole libration period matches
-  `2π/√(27/4·μ)` to within a few percent; the bit holds across mass ratios.
-- **Jacobi constant** — conserved to `< 1e-9` along held and erased orbits; a
-  held bit matches the analytic `C_L4 = 3 − μ(1−μ)`; L4 and L5 share it; and a
-  bit-erasing kick provably lowers `C_J` below the held value.
-- **Memory** — both states read correctly and hold for 80 (and, slow, 300)
-  orbits without secular drift; sub-threshold kicks preserve the bit and
-  super-threshold kicks erase it; the 3D cell holds its bit while bobbing out
-  of plane; a 2-vector kick on a 3D cell leaves `vz` intact (regression).
-- **Determinism & 2D/3D consistency** — repeatable runs; a 3D run with `z=0`
-  reproduces the 2D run exactly.
+- **Kepler** — a moon on a circular orbit stays circular and obeys Kepler's third law.
+- **Conservation** — energy `<1e-9` and momentum in 2D & 3D; barycenter pinned; the massless moonlet exerts no back-reaction; time-reversal retraces.
+- **Lagrange theory** — L4/L5 exactly equilateral and true equilibria; measured libration period matches `2π/√(27/4·μ)`; stability across mass ratios.
+- **Jacobi constant** — conserved along held *and* erased orbits; held bit sits at analytic `C_L4`; erasing kicks provably lower `C_J`.
+- **Rotating engine** — matches the inertial integrator trajectory-for-trajectory; blank medium circulates at the theoretical drift rate.
+- **WRITE** — same blank + same pulse, timing alone selects the bit; both bits write correctly, deterministically, and survive a 40-orbit hold after an engine swap to the full N-body integrator.
+- **Memory** — holds 80 (and 300, slow-marked) orbits with no secular drift; sub-threshold kicks preserve, super-threshold erase; the separatrix-crossing reader classifies tadpole/horseshoe/circulation physically.
 
 ## Layout
 
 ```
-orbital/    nbody.py (2D/3D integrator, G=1) · memory.py (L4/L5 cell, readout, kicks)
-demos/      flipflop_demo.py · flipflop_3d.py · make_gifs.py
-tests/      test_nbody.py · test_memory.py · test_theory.py  (37 tests, physics-validated)
-docs/       the figures and GIFs above
+orbital/    nbody.py (2D/3D inertial integrator) · rotating.py (co-rotating frame, μ(t))
+            memory.py (cell, reader, kicks) · write.py (the pinch write) · theory.py (C_J, L-points)
+demos/      flipflop_demo · write_demo · landscape · flipflop_3d · make_gifs
+tests/      test_nbody · test_memory · test_theory · test_rotating · test_write   (51 tests)
+docs/       all figures and GIFs above
 ```
 
 ## Physics & numerics
 
-- Circular restricted three-body problem, `G = 1`, total mass 1, separation 1,
-  mean motion `n = 1` (period `2π`). Planet mass fraction `μ = 0.003` (`< 0.0385`,
-  so L4/L5 are linearly stable).
-- Adaptive high-order Runge–Kutta (scipy `DOP853`, `rtol ~ 1e-11`); energy drift
-  ~`1e-11` over the runs. A symplectic integrator (e.g. REBOUND's WHFast) is the
-  right upgrade for retention claims over astronomical timescales.
+- Circular restricted three-body problem, `G = 1`, total mass 1, separation 1, mean motion `n = 1`. Cell mass ratio `μ = 0.003` (< 0.0385 Gascheau/Routh limit); blank medium at `μ₀ = 3e-4`.
+- Adaptive high-order Runge–Kutta (scipy `DOP853`); energy drift ~`1e-11`, Jacobi drift ~`1e-12` on held cells. A symplectic integrator (e.g. REBOUND's WHFast) is the right upgrade for Gyr-scale retention claims.
 
 ## Honest caveats & prior art
 
-- The stored bit rides on real, well-studied physics: triangular Lagrange
-  stability (Gascheau/Routh), tadpole vs horseshoe libration, resonance capture
-  (Malhotra; Neptune capturing Pluto into 3:2), KAM/Nekhoroshev stability of
-  invariant tori. What appears unclaimed — as with the slingshot project — is
-  engineering it into a *built memory artifact* with a read, a noise margin, and
-  a route to a write. The novelty is the construction, not the mechanism.
-- Turing-completeness is not claimed. This is a memory element; pairing it with
-  slingshot-computing's gates (flyby = write head, orbit = storage) is the
-  longer arc.
+- Every mechanism here is textbook celestial mechanics: triangular Lagrange stability (Gascheau/Routh), tadpole/horseshoe co-orbitals (Janus & Epimetheus), adiabatic resonance capture (Henrard; Neishtadt; Malhotra — Neptune capturing Pluto), zero-velocity curves and the Jacobi integral. What appears unclaimed is the *construction*: engineering these into a memory cell with a write pulse, a timing diagram, a noise margin, and a test suite. The novelty is the artifact, not the mechanism.
+- Wide pinch-written tadpoles librate broadly (~±70°); they hold and read robustly, but deep-cooling a written bit (shrinking its libration) needs a non-adiabatic trick — an open problem, alongside a genuine erase-to-blank cycle (write is currently one-way: μ stays grown).
+- Turing-completeness is not claimed. This is a memory element; pairing it with slingshot-computing's flyby gates (flyby = logic, orbit = storage) is the longer arc.
 
 ## Roadmap
 
-- [x] A bit that holds: L4/L5 tadpole memory, read + retention (80 orbits, 3e-11)
-- [x] Noise margin: the separatrix threshold (~3.5% of orbital speed)
-- [x] 3D: dimension-agnostic integrator + inclined-Trojan visualization
-- [x] Finding: the memory is topological, not dissipative (drag destabilizes L4/L5)
-- [x] TDD suite (37 tests) validating the integrator against closed-form physics
-- [ ] Write: adiabatic resonance capture (migration-driven), not drag
-- [ ] Theory pass: averaged Trojan Hamiltonian → closed-form noise margin & retention
-- [ ] A multi-cell "byte"; the inclination bob as an analog sub-register
+- [x] A bit that holds: L4/L5 tadpole memory (80–300 orbits, no drift)
+- [x] Noise margin: separatrix threshold ~3.5% of orbital speed, restated in `C_J`
+- [x] 3D: dimension-agnostic integrator + inclined-Trojan bit
+- [x] Finding: memory is topological, not dissipative (drag destabilizes L4/L5)
+- [x] **WRITE: adiabatic horseshoe pinch — bit selected by pulse timing alone**
+- [x] Rotating-frame engine with time-dependent μ (write pulses)
+- [x] Jacobi-constant theory module; 51-test physics-validated suite
+- [ ] Re-writable cell: erase back to blank (shrink μ) and write again
+- [ ] Bit cooling: shrink a written tadpole's libration (non-adiabatic pulse shaping)
+- [ ] Averaged 1-DOF Hamiltonian: closed-form noise margin & write windows
+- [ ] A register: several cells at different radii; crosstalk vs spacing
 - [ ] Symplectic integrator for astronomical-timescale retention

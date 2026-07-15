@@ -96,20 +96,26 @@ def _circular_mean_deg(phi):
 
 
 def classify(phi):
-    """Read the bit from a resonant-angle time series.
+    """Read the bit from a resonant-angle time series (degrees, wrapped).
 
-    Returns (label, center_deg, amplitude_deg). A tadpole stays on one side of
-    the star-planet line and never crosses the L3 point at 180 deg; a horseshoe
-    sweeps across it.
+    Returns (label, center_deg, amplitude_deg), decided by which separatrix
+    lines the trajectory crosses — the physical definition, valid for
+    arbitrarily wide tadpoles:
+
+      * a TADPOLE never reaches conjunction (phi = 0) nor L3 (phi = ±180):
+        no sign changes at all -> the bit, L4 (+) or L5 (−) by mean side;
+      * a HORSESHOE turns around near the secondary but sweeps through L3:
+        sign changes only at ±180 -> 'erased';
+      * CIRCULATION sweeps through both -> 'erased'.
     """
-    crosses_L3 = np.any(np.abs(np.diff(np.unwrap(np.radians(phi)))) > np.pi / 2)
+    phi = np.asarray(phi, dtype=float)
     center = _circular_mean_deg(phi)
     amp = float(np.max(np.abs(nbody.wrap_pi(np.radians(phi) - np.radians(center))))
                 * 180 / np.pi)
-    span = phi.max() - phi.min()
-    if crosses_L3 or span > 150:
-        return "erased", center, amp
-    return ("L4" if center > 0 else "L5"), center, amp
+    flips = np.where(np.diff(np.sign(phi)) != 0)[0]
+    if len(flips) == 0:
+        return ("L4" if center > 0 else "L5"), center, amp
+    return "erased", center, amp  # horseshoe or circulation: no stored bit
 
 
 def hold(state="L4", periods=40, mu=MU, libration_deg=6.0, n_per_period=60):
