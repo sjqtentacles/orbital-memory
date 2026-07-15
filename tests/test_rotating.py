@@ -89,3 +89,37 @@ class TestTimeDependentMu:
         assert np.all(np.diff(vals) >= -1e-12)  # monotone
         assert ramp(0.0) == pytest.approx(2e-4)
         assert ramp(150.0) == pytest.approx(3e-3)
+
+    def test_ramp_down_is_monotone_decreasing(self):
+        """smooth_ramp must also run in reverse — the ERASE pulse."""
+        down = rotating.smooth_ramp(mu0=3e-3, mu1=2e-4, t_ramp=100.0)
+        ts = np.linspace(-5, 200, 500)
+        vals = np.array([down(t) for t in ts])
+        assert vals[0] == pytest.approx(3e-3)
+        assert vals[-1] == pytest.approx(2e-4)
+        assert np.all(np.diff(vals) <= 1e-12)
+
+
+class TestMuSchedule:
+    def test_piecewise_values(self):
+        """Hold, grow, hold, shrink, hold — a full write/erase composite."""
+        sched = rotating.mu_schedule(1e-4, [(10.0, 20.0, 3e-3),
+                                            (50.0, 20.0, 1e-4)])
+        assert sched(0.0) == pytest.approx(1e-4)
+        assert sched(10.0) == pytest.approx(1e-4)
+        assert sched(30.0) == pytest.approx(3e-3)   # after leg 1
+        assert sched(45.0) == pytest.approx(3e-3)   # holding
+        assert sched(70.0) == pytest.approx(1e-4)   # after leg 2
+        assert sched(1e6) == pytest.approx(1e-4)
+
+    def test_matches_chained_ramps(self):
+        """One schedule leg must equal the equivalent single smooth_ramp."""
+        sched = rotating.mu_schedule(2e-4, [(5.0, 30.0, 3e-3)])
+        ramp = rotating.smooth_ramp(2e-4, 3e-3, t_ramp=30.0, t0=5.0)
+        ts = np.linspace(0, 60, 400)
+        assert np.allclose([sched(t) for t in ts], [ramp(t) for t in ts])
+
+    def test_legs_must_be_ordered_and_disjoint(self):
+        with pytest.raises(ValueError):
+            rotating.mu_schedule(1e-4, [(10.0, 20.0, 3e-3),
+                                        (15.0, 20.0, 1e-4)])  # overlaps leg 1

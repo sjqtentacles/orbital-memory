@@ -41,11 +41,37 @@ def _rhs(t, s, mu_of_t):
 
 
 def smooth_ramp(mu0, mu1, t_ramp, t0=0.0):
-    """A C^1 monotone mass-growth schedule: mu0 before t0, smoothstep over
-    [t0, t0 + t_ramp], mu1 after. The write pulse."""
+    """A C^1 monotone mass-transfer schedule: mu0 before t0, smoothstep over
+    [t0, t0 + t_ramp], mu1 after. Runs up (the write pulse) or down (the
+    erase pulse) — smoothstep interpolation is direction-agnostic."""
     def mu_of_t(t):
         s = np.clip((t - t0) / t_ramp, 0.0, 1.0)
         return mu0 + (mu1 - mu0) * (3 * s * s - 2 * s ** 3)
+    return mu_of_t
+
+
+def mu_schedule(mu_init, legs):
+    """Composite C^1 mu(t): hold mu_init, then for each leg
+    (t_start, t_ramp, mu_target) smoothstep to the target and hold it until
+    the next leg. Lets a full write -> store -> erase -> rewrite cycle run
+    as ONE integration. Legs must be time-ordered and non-overlapping."""
+    prev_end = -np.inf
+    for t_start, t_ramp, _ in legs:
+        if t_start < prev_end:
+            raise ValueError("mu_schedule legs must be ordered and disjoint")
+        prev_end = t_start + t_ramp
+
+    def mu_of_t(t):
+        cur = mu_init
+        for t_start, t_ramp, target in legs:
+            if t <= t_start:
+                return cur
+            s = min((t - t_start) / t_ramp, 1.0)
+            val = cur + (target - cur) * (3 * s * s - 2 * s ** 3)
+            if t < t_start + t_ramp:
+                return val
+            cur = target
+        return cur
     return mu_of_t
 
 
@@ -106,7 +132,14 @@ def to_rotating_frame(res, body):
 
 def to_inertial_bodies(state, t, mu=MU):
     """Rotating-frame particle state at time t -> full inertial 3-body list
-    (star, planet, particle), e.g. to hand a written bit to nbody.integrate."""
+    (star, planet, particle), e.g. to hand a written bit to nbody.integrate.
+
+    Frame-phase warning: the primaries come out rotated by angle t. Any
+    later frame-dependent readout (theory.jacobi_of, to_rotating_frame)
+    reconstructs the frame from the run's OWN time axis, so start the
+    follow-on integration at t0 = t (or hand off at an exact multiple of
+    the period) — otherwise the reconstructed frame is misaligned by
+    t mod 2*pi and 'constants' appear to oscillate."""
     x, y, vx, vy = state
     c, s = np.cos(t), np.sin(t)
 
