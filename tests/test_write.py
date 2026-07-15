@@ -50,6 +50,22 @@ class TestWrite:
         b = write.write_bit("1")
         assert np.array_equal(a["xy"], b["xy"])
 
+    def test_read_window_is_in_orbits_not_samples(self):
+        """read() must give the same verdict regardless of sampling density —
+        the window is physical time (orbits), not an index count."""
+        dense = write.write_bit("1", n_samples=3000)
+        sparse = write.write_bit("1", n_samples=600)
+        assert write.read(dense)[0] == "1"
+        assert write.read(sparse)[0] == "1"
+
+    def test_scan_delays_uses_production_path(self):
+        """The datasheet scan must be the production write with a different
+        delay — same blank, same pulse shape, same read. Canonical delays in
+        the scan must reproduce the canonical bits."""
+        delays = [write.WRITE_DELAY["1"], write.WRITE_DELAY["0"]]
+        out = write.scan_delays(delays)
+        assert out[0]["bit"] == "1" and out[1]["bit"] == "0"
+
 
 class TestWriteThenHold:
     @pytest.mark.parametrize("bit,label", [("1", "L4"), ("0", "L5")])
@@ -63,4 +79,7 @@ class TestWriteThenHold:
         phi = memory.resonant_angle(held)
         got, _, _ = memory.classify(phi)
         assert got == label
-        assert held["energy_drift"] < 1e-9
+        # the moonlet's own invariant (energy_drift only sees the primaries)
+        from orbital import theory
+        C = theory.jacobi_of(held)
+        assert (C.max() - C.min()) < 1e-9

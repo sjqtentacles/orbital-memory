@@ -10,25 +10,16 @@
 Usage: python -m demos.landscape
 """
 
-import pathlib
-
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from orbital import memory, rotating, theory
+from demos.style import (CIRC, DIM, DOCS, GROUND, HORSE, L4C, L5C, PLANET,
+                         STAR)
+from orbital import memory, rotating, theory, write
 
-DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
-GROUND = "#0a0e17"
-STAR = "#ffd166"
-PLANET = "#9fb0dd"
-L4C = "#54d1ff"
-L5C = "#ff8fa3"
-HORSE = "#ffb454"
-CIRC = "#8b93b8"
-DIM = "#7c88a8"
 MU = memory.MU
 
 
@@ -60,7 +51,7 @@ def landscape():
                       "\nzero-velocity curve at the held bit's Jacobi constant")
     g = np.linspace(-1.45, 1.45, 900)
     X, Y = np.meshgrid(g, g)
-    C_grid = 2 * theory.effective_potential(X, Y, MU)  # C at zero velocity
+    C_grid = 2 * theory.effective_potential(X, Y, mu=MU)  # C at zero velocity
 
     # background: shaded potential (arcsinh stretch, clipped near primaries)
     Z = np.clip(C_grid, 2.9, 3.35)
@@ -106,10 +97,10 @@ def landscape():
 
 
 def anatomy():
-    """Drawn at the write-time mass ratio mu0 = 3e-4, where all four states
+    """Drawn at the write-time mass ratio write.MU0, where all four states
     coexist cleanly (at the full cell mu the horseshoe band sits in the
     chaotic layer — which is exactly why the write STARTS at mu0)."""
-    mu0 = 3e-4
+    mu0 = write.MU0
     fig, ax = _fig_ax("the four states of the medium — "
                       "tadpoles (bits), horseshoe, circulation\n"
                       r"(drawn at the write-time mass ratio $\mu_0 = 3\times10^{-4}$)")
@@ -124,7 +115,8 @@ def anatomy():
         ax.plot(r["xy"][:, 0], r["xy"][:, 1], color=col, lw=1.6, label=lab,
                 zorder=5)
     # erased: a horseshoe — sweeps through L3, turns around near the secondary
-    hs = rotating.integrate(rotating.circular_coorbital(180.0, da=0.034),
+    # (drawn at the blank medium's exact offset write.DA)
+    hs = rotating.integrate(rotating.circular_coorbital(180.0, da=write.DA),
                             150 * T, n_samples=5000, mu=mu0)
     ax.plot(hs["xy"][:, 0], hs["xy"][:, 1], color=HORSE, lw=0.9, alpha=0.9,
             label="horseshoe  ·  erased", zorder=4)

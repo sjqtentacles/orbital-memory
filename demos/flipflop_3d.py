@@ -8,10 +8,6 @@ banana." Renders docs/orbital_3d.gif with a slowly orbiting camera.
 Usage: python -m demos.flipflop_3d
 """
 
-import pathlib
-import shutil
-import subprocess
-
 import matplotlib
 
 matplotlib.use("Agg")
@@ -19,15 +15,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
 
+from demos.style import DIM, DOCS, GROUND, L4C, L5C, PLANET, STAR, optimize_gif
 from orbital import memory, nbody
 
-DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
-GROUND = "#0a0e17"
-STAR = "#ffd166"
-PLANET = "#9fb0dd"
-L4C = "#54d1ff"
-L5C = "#ff8fa3"
-DIM = "#7c88a8"
 ORBITS = 15
 FRAMES = 130
 
@@ -104,18 +94,7 @@ def main():
     anim.save(out, writer=PillowWriter(fps=20), dpi=100,
               savefig_kwargs={"facecolor": GROUND})
     plt.close(fig)
-    if shutil.which("magick") or shutil.which("convert"):
-        tool = "magick" if shutil.which("magick") else "convert"
-        tmp = out.with_suffix(".opt.gif")
-        try:
-            subprocess.run([tool, str(out), "-layers", "optimize", "-fuzz", "3%",
-                            str(tmp)], check=True, capture_output=True)
-            if tmp.stat().st_size < out.stat().st_size:
-                tmp.replace(out)
-            elif tmp.exists():
-                tmp.unlink()
-        except subprocess.CalledProcessError:
-            tmp.exists() and tmp.unlink()
+    optimize_gif(out)
     print(f"wrote {out}  ({out.stat().st_size // 1024} KB)")
 
 

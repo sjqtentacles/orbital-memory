@@ -57,10 +57,17 @@ def integrate(bodies, t_end, n_samples=2000, rtol=1e-11, atol=1e-12, t0=0.0,
     """Integrate a list of bodies (dicts with 'm','pos','vel') to t_end.
 
     Positions/velocities may be 2- or 3-vectors (all bodies must agree).
-    drag=(k, [indices]) applies weak corotation drag to those bodies.
+    drag=(k, [indices]) applies weak corotation drag to those bodies — an
+    experimental non-gravitational term kept ONLY to demonstrate that
+    dissipation destroys this memory (see TestDissipation).
 
     Returns times, trajectories (N, n_samples, d), velocities, the final full
     state vector, the dimension, and relative energy drift.
+    NOTE: energy_drift weights bodies by mass, so it measures the MASSIVE
+    bodies only — a massless test particle contributes nothing. The particle's
+    own invariant is the Jacobi constant (theory.jacobi_of). Result keys here
+    (traj/vel) intentionally differ from rotating.integrate's (xy/v); the two
+    engines' results are not interchangeable.
     """
     masses = np.array([b["m"] for b in bodies], dtype=float)
     dim = len(bodies[0]["pos"])
@@ -81,12 +88,6 @@ def integrate(bodies, t_end, n_samples=2000, rtol=1e-11, atol=1e-12, t0=0.0,
     drift = abs((e1 - e0) / e0) if e0 != 0 else abs(e1 - e0)
     return {"t": times, "traj": traj, "vel": vels, "yf": sol.y[:, -1],
             "masses": masses, "dim": dim, "energy_drift": drift}
-
-
-def longitude(pos, center=(0.0, 0.0)):
-    """True longitude (radians) of pos in the xy-plane about center (z ignored)."""
-    p = np.asarray(pos)
-    return np.arctan2(p[..., 1] - center[1], p[..., 0] - center[0])
 
 
 def wrap_pi(a):

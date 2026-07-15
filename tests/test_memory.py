@@ -7,14 +7,7 @@ Where possible the simulation is checked against closed-form Lagrange theory
 import numpy as np
 import pytest
 
-from orbital import memory, nbody
-
-
-def _rot_frame(res, body):
-    t = res["t"]
-    xy = res["traj"][body]
-    c, s = np.cos(-t), np.sin(-t)
-    return np.column_stack([c * xy[:, 0] - s * xy[:, 1], s * xy[:, 0] + c * xy[:, 1]])
+from orbital import memory, nbody, rotating
 
 
 class TestPrimaries:
@@ -51,7 +44,7 @@ class TestLagrangeGeometry:
         the rotating frame (a true equilibrium of the restricted problem)."""
         cell = memory.make_cell("L4", libration_deg=0.0)
         res = nbody.integrate(cell, 20 * memory.PERIOD, n_samples=800)
-        rp = _rot_frame(res, 2)
+        rp = rotating.to_rotating_frame(res, 2)
         drift = np.linalg.norm(rp - rp[0], axis=1).max()
         assert drift < 1e-3
 
@@ -107,20 +100,45 @@ class TestAgainstTheory:
 
 class TestNoiseMargin:
     def _kick_outcome(self, frac):
-        cell = memory.make_cell("L4", libration_deg=2.0)
-        pre = nbody.integrate(cell, 5 * memory.PERIOD, n_samples=200)
-        bodies = memory.state_to_bodies(pre)
-        v = np.array(bodies[2]["vel"])
-        dv = (v / np.linalg.norm(v) * np.linalg.norm(v) * frac).tolist()
-        res = nbody.integrate(memory.kick(bodies, dv), 60 * memory.PERIOD,
+        res = nbody.integrate(memory.kicked_cell(frac), 60 * memory.PERIOD,
                               n_samples=3000)
         return memory.classify(memory.resonant_angle(res))[0]
 
     def test_small_kick_preserves_bit(self):
         assert self._kick_outcome(0.02) == "L4"
 
+    def test_kick_at_named_threshold_erases_bit(self):
+        """ERASE_KICK is the promoted noise-margin constant: a kick at the
+        threshold must actually erase (it is defined as the measured minimum
+        erasing kick, in fractions of orbital speed)."""
+        assert memory.ERASE_KICK == pytest.approx(0.035)
+        assert self._kick_outcome(memory.ERASE_KICK) == "erased"
+
     def test_large_kick_erases_bit(self):
         assert self._kick_outcome(0.05) == "erased"
+
+
+class TestDissipation:
+    def test_drag_destabilizes_L4(self):
+        """The claim the README rests on, committed as a test: L4/L5 are
+        Coriolis-stabilized, so velocity drag REMOVES the stabilization —
+        a tadpole under weak corotation drag is expelled, while the drag-free
+        control holds. Memory here is topological, not dissipative.
+        (Short horizon + loose tolerances on purpose: within ~10 orbits the
+        dragged moonlet has already spiraled from r=1 to r~0.03 — going
+        further just grinds the integrator inside the star's well, and
+        precision is irrelevant to the verdict.)"""
+        cell = memory.make_cell("L4", libration_deg=15.0)
+        held = nbody.integrate(cell, 10 * memory.PERIOD, n_samples=500,
+                               rtol=1e-8, atol=1e-9)
+        assert memory.classify(memory.resonant_angle(held))[0] == "L4"
+        dragged = nbody.integrate(cell, 10 * memory.PERIOD, n_samples=500,
+                                  rtol=1e-8, atol=1e-9, drag=(0.05, [2]))
+        res = memory.classify(memory.resonant_angle(dragged))
+        assert res[0] == "erased"
+        # and it truly left the co-orbital ring (spiraled inward)
+        r = np.linalg.norm(dragged["traj"][2], axis=1)
+        assert r.min() < 0.5
 
 
 class TestThreeD:
@@ -155,3 +173,36 @@ class TestClassify:
         l5 = -60 + 20 * np.sin(t)
         assert memory.classify(l4)[0] == "L4"
         assert memory.classify(l5)[0] == "L5"
+
+    def test_wide_tadpole_still_reads_its_island(self):
+        """Regression for the audit's worry: a pinch-written tadpole librates
+        ±70° around a center near 95°, bottoming ~25° — it never crosses
+        conjunction (0°) or L3 (±180°), so it MUST read as a bit, not erased.
+        (Real-trajectory coverage of the same fact lives in test_write.)"""
+        t = np.linspace(0, 6 * np.pi, 600)
+        wide_l4 = 95 + 70 * np.sin(t)          # range [25, 165]
+        wide_l5 = -(95 + 70 * np.sin(t))
+        assert memory.classify(wide_l4)[0] == "L4"
+        assert memory.classify(wide_l5)[0] == "L5"
+
+    def test_horseshoe_series_reads_erased(self):
+        """Sweeps through L3 (±180) but never conjunction — still no bit."""
+        t = np.linspace(0, 4 * np.pi, 800)
+        horseshoe = 180.0 * np.sin(t / 2 + 0.3)
+        horseshoe = (horseshoe + 180) % 360 - 180
+        assert memory.classify(horseshoe)[0] == "erased"
+
+    def test_parked_bit_is_still_a_bit(self):
+        """A constant series is a moonlet sitting AT the point (a valid, if
+        idealized, stored bit) — classified by side, not rejected."""
+        assert memory.classify(np.full(50, 60.0))[0] == "L4"
+        assert memory.classify(np.full(50, -60.0))[0] == "L5"
+
+    def test_too_short_series_is_not_evidence(self):
+        # a handful of samples can't distinguish libration from anything
+        assert memory.classify(np.array([60.0]))[0] == "erased"
+        assert memory.classify(np.full(5, 60.0))[0] == "erased"
+
+    def test_empty_series_raises(self):
+        with pytest.raises(ValueError):
+            memory.classify(np.array([]))

@@ -92,6 +92,18 @@ def from_inertial(pos, vel, t):
     return np.array([x, y, vx, vy])
 
 
+def to_rotating_frame(res, body):
+    """One body's trajectory from an inertial nbody.integrate() run, rotated
+    into the co-rotating frame (n = 1). Returns (n_samples, 2) positions; a
+    3D run's z column is dropped (the frame rotates about z). The single
+    shared implementation of the transform every demo, test and figure needs."""
+    t = res["t"]
+    xy = res["traj"][body]
+    c, s = np.cos(-t), np.sin(-t)
+    return np.column_stack([c * xy[:, 0] - s * xy[:, 1],
+                            s * xy[:, 0] + c * xy[:, 1]])
+
+
 def to_inertial_bodies(state, t, mu=MU):
     """Rotating-frame particle state at time t -> full inertial 3-body list
     (star, planet, particle), e.g. to hand a written bit to nbody.integrate."""
@@ -115,14 +127,17 @@ def to_inertial_bodies(state, t, mu=MU):
 
 def lagrange_tadpole(point="L4", libration_deg=6.0, mu=MU):
     """Rotating-frame state seeded on the corotation circle, `libration_deg`
-    ahead of the chosen triangular point (same construction as memory.make_cell)."""
+    ahead of the chosen triangular point. (Angles are measured from exactly
+    ±60°, so this differs from memory.make_cell's rotated-L4-vector seed by
+    the tiny atan2(√3/2, ½−μ) − 60° ≈ 0.17° offset — both are valid tadpole
+    seeds; they are not bit-for-bit identical.)"""
     sy = 1.0 if point == "L4" else -1.0
     ang = np.radians(60.0 * sy + libration_deg)
     r = np.hypot(0.5 - mu, np.sqrt(3) / 2)
     return np.array([r * np.cos(ang), r * np.sin(ang), 0.0, 0.0])
 
 
-def circular_coorbital(phi0_deg, da=0.03, mu_now=1e-4):
+def circular_coorbital(phi0_deg, da=0.03):
     """A blank medium: a body on an inertial circular orbit of radius 1 + da
     at longitude phi0 relative to the secondary. In the rotating frame it
     slowly circulates (drift rate ~ -1.5 da per unit time), waiting to be

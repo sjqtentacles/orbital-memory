@@ -18,16 +18,22 @@ class TestAgreesWithFullNBody:
         reproduce the full 3-body inertial run (transformed) to high accuracy."""
         cell = memory.make_cell("L4", libration_deg=6.0)
         full = nbody.integrate(cell, 10 * memory.PERIOD, n_samples=500)
-        # transform the inertial particle trajectory into the rotating frame
-        t = full["t"]
-        xy = full["traj"][2]
-        c, s = np.cos(-t), np.sin(-t)
-        ref = np.column_stack([c * xy[:, 0] - s * xy[:, 1],
-                               s * xy[:, 0] + c * xy[:, 1]])
+        ref = rotating.to_rotating_frame(full, 2)
 
         state0 = rotating.from_inertial(cell[2]["pos"], cell[2]["vel"], t=0.0)
         run = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=500)
         assert np.max(np.linalg.norm(run["xy"] - ref, axis=1)) < 1e-6
+
+    def test_to_rotating_frame_helper(self):
+        """The shared helper equals the textbook transform, and a body on the
+        corotation circle maps to a fixed point."""
+        cell = memory.make_cell("L4", libration_deg=0.0)
+        full = nbody.integrate(cell, 5 * memory.PERIOD, n_samples=200)
+        rp = rotating.to_rotating_frame(full, 2)
+        assert np.max(np.linalg.norm(rp - rp[0], axis=1)) < 1e-3
+        # planet itself is pinned at (1-mu, 0) in this frame
+        planet = rotating.to_rotating_frame(full, 1)
+        assert np.allclose(planet, [1 - memory.MU, 0.0], atol=1e-9)
 
     def test_jacobi_conserved_at_constant_mu(self):
         state0 = rotating.lagrange_tadpole("L4", libration_deg=6.0)

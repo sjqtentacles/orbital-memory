@@ -45,26 +45,54 @@ def blank():
     return rotating.circular_coorbital(phi0_deg=PHI0, da=DA)
 
 
+def write_pulse(delay, n_samples=1500, rtol=1e-9, atol=1e-10):
+    """The production write pipeline for an arbitrary pulse delay: position
+    along the blank horseshoe for `delay`, fire the growth pulse, settle.
+    write_bit() and scan_delays() are both thin wrappers over this."""
+    ramp = rotating.smooth_ramp(MU0, memory.MU, t_ramp=T_RAMP, t0=delay)
+    return rotating.integrate(blank(), delay + T_RAMP + T_HOLD,
+                              n_samples=n_samples, mu=ramp,
+                              rtol=rtol, atol=atol)
+
+
 def write_bit(bit, n_samples=1500, rtol=1e-9, atol=1e-10):
     """Write '1' (L4) or '0' (L5) into a blank cell by pulse timing alone.
 
     Same blank state, same pulse shape — only the firing time differs.
     Returns the full run; read the result with read()."""
-    delay = WRITE_DELAY[str(bit)]
-    ramp = rotating.smooth_ramp(MU0, memory.MU, t_ramp=T_RAMP, t0=delay)
-    t_end = delay + T_RAMP + T_HOLD
-    run = rotating.integrate(blank(), t_end, n_samples=n_samples, mu=ramp,
-                             rtol=rtol, atol=atol)
+    run = write_pulse(WRITE_DELAY[str(bit)], n_samples=n_samples,
+                      rtol=rtol, atol=atol)
     run["bit"] = str(bit)
     return run
 
 
-def read(run, window=450):
-    """Read the stored bit from the tail of a run: 'L4' -> 1, 'L5' -> 0.
-    The window must exceed one wide-tadpole libration cycle (~40 orbits),
-    else a slow horseshoe can masquerade as a stored bit."""
-    label, center, amp = memory.classify(run["phi"][-window:])
+def read(run, window_orbits=45.0):
+    """Read the stored bit from the tail of a run.
+
+    Returns (bit, center_deg, amp_deg) where bit is '1' (L4), '0' (L5), or
+    the string 'erased' — callers must handle the three-valued result.
+    The window is PHYSICAL TIME (orbits), converted to samples from the run's
+    own clock, so the verdict is independent of sampling density. It must
+    exceed one wide-tadpole libration cycle (~40 orbits), else a slow
+    horseshoe can masquerade as a stored bit."""
+    t = run["t"]
+    t_cut = t[-1] - window_orbits * memory.PERIOD
+    idx = int(np.searchsorted(t, t_cut))
+    label, center, amp = memory.classify(run["phi"][idx:])
     return {"L4": "1", "L5": "0"}.get(label, "erased"), center, amp
+
+
+def scan_delays(delays, n_samples=1500, rtol=1e-9, atol=1e-10):
+    """The timing-diagram experiment, on the PRODUCTION write path: for each
+    pulse delay (time units), run the exact write pipeline (same blank, same
+    pulse shape, same tolerances, same read) and record the outcome.
+    Returns a list of {'delay', 'bit', 'center', 'amp'} dicts."""
+    out = []
+    for delay in delays:
+        run = write_pulse(delay, n_samples=n_samples, rtol=rtol, atol=atol)
+        bit, center, amp = read(run)
+        out.append({"delay": delay, "bit": bit, "center": center, "amp": amp})
+    return out
 
 
 def written_cell_bodies(run):

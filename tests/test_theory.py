@@ -38,7 +38,8 @@ class TestJacobiConstant:
     def test_conserved_along_held_bit(self):
         res = memory.hold("L4", periods=40, libration_deg=6.0)
         C = theory.jacobi_of(res)
-        assert (C.max() - C.min()) < 1e-9   # a strong integrator invariant
+        # measured ~4e-12; the README quotes the enforced bound below
+        assert (C.max() - C.min()) < 1e-10
 
     def test_conserved_along_erased_orbit(self):
         cell = memory.make_cell("L4", libration_deg=2.0)

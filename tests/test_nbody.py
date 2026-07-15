@@ -49,15 +49,35 @@ class TestKeplerMoon:
 
 
 class TestConservation:
-    def test_energy_2d_cell(self):
+    def test_primaries_energy_2d_cell(self):
+        """energy_drift watches the MASSIVE bodies only (the moonlet is m=0
+        and contributes nothing) — a primaries-quality check, not a cell one."""
         res = nbody.integrate(memory.make_cell("L4"), 40 * memory.PERIOD,
                               n_samples=2000)
         assert res["energy_drift"] < 1e-9
 
-    def test_energy_3d_cell(self):
+    def test_primaries_energy_3d_cell(self):
         res = nbody.integrate(memory.make_cell_3d("L4"), 40 * memory.PERIOD,
                               n_samples=2000)
         assert res["energy_drift"] < 1e-9
+
+    def test_particle_jacobi_2d_cell(self):
+        """The massless moonlet's OWN invariant is the Jacobi constant —
+        this is the true accuracy metric for the memory cell."""
+        from orbital import theory
+        res = nbody.integrate(memory.make_cell("L4"), 40 * memory.PERIOD,
+                              n_samples=2000)
+        C = theory.jacobi_of(res)
+        assert (C.max() - C.min()) < 1e-10
+
+    def test_particle_jacobi_3d_cell(self):
+        """The full 3D Jacobi integral (z in the potential, vz in the speed)
+        must be conserved for the inclined Trojan too."""
+        from orbital import theory
+        res = nbody.integrate(memory.make_cell_3d("L4"), 40 * memory.PERIOD,
+                              n_samples=2000)
+        C = theory.jacobi_of(res)
+        assert (C.max() - C.min()) < 1e-9
 
     def test_momentum_conserved_and_zero(self):
         res = nbody.integrate(memory.make_cell("L4"), 30 * memory.PERIOD,

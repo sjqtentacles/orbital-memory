@@ -26,6 +26,11 @@ from . import nbody
 MU = 0.003          # secondary mass fraction (< 0.0385 -> L4/L5 linearly stable)
 PERIOD = 2 * np.pi  # orbital period of the primary pair
 
+# The measured noise margin: the smallest tangential kick (as a fraction of
+# orbital speed) that ejects a deep tadpole across the separatrix. Kicks
+# below this leave the bit intact; at or above it, the bit erases.
+ERASE_KICK = 0.035
+
 # A few real co-orbital mass ratios (secondary / total), for reference and
 # for parameterizing the cell at moon scale. Libration slows as ~1/sqrt(mu).
 MU_SUN_JUPITER = 9.54e-4       # the classic Jupiter Trojans
@@ -109,9 +114,13 @@ def classify(phi):
       * CIRCULATION sweeps through both -> 'erased'.
     """
     phi = np.asarray(phi, dtype=float)
+    if phi.size == 0:
+        raise ValueError("classify: empty resonant-angle series")
     center = _circular_mean_deg(phi)
     amp = float(np.max(np.abs(nbody.wrap_pi(np.radians(phi) - np.radians(center))))
                 * 180 / np.pi)
+    if phi.size < 10:
+        return "erased", center, amp  # too short to be evidence of libration
     flips = np.where(np.diff(np.sign(phi)) != 0)[0]
     if len(flips) == 0:
         return ("L4" if center > 0 else "L5"), center, amp
@@ -138,6 +147,21 @@ def kick(bodies_state, dv, particle=2):
     v = [v[i] + (dv[i] if i < len(dv) else 0.0) for i in range(len(v))]
     out[particle] = dict(out[particle], vel=v)
     return out
+
+
+def kicked_cell(frac, state="L4", libration_deg=2.0, settle_periods=5,
+                mu=MU, direction=None):
+    """The standard noise-margin experiment, packaged: seed a deep tadpole,
+    let it settle `settle_periods`, then kick the moonlet tangentially by
+    `frac` of its orbital speed. Returns the kicked body list, ready for
+    nbody.integrate. `direction` overrides the unit kick direction."""
+    cell = make_cell(state, mu, libration_deg)
+    pre = nbody.integrate(cell, settle_periods * PERIOD, n_samples=200)
+    bodies = state_to_bodies(pre)
+    v = np.array(bodies[2]["vel"])
+    speed = np.linalg.norm(v)
+    uhat = np.asarray(direction, float) if direction is not None else v / speed
+    return kick(bodies, (uhat * speed * frac).tolist())
 
 
 def libration_period(mu=MU):
