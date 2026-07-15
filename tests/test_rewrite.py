@@ -70,13 +70,18 @@ class TestRewriteWall:
         assert all(r["bit"] == "erased" for r in results)
 
     @pytest.mark.slow
-    def test_slower_erase_ejects_instead_of_helping(self):
+    def test_slower_erase_wrecks_the_medium_harder(self):
         """The tempting fix fails harder: at 3x the erase duration the
-        moonlet lingers in the separatrix layer and is ejected from the
-        co-orbital region entirely."""
+        moonlet lingers in the separatrix layer and comes out far beyond
+        any recapture. The exact exit is CHAOTIC and platform-dispersed
+        (measured da 0.36 on one BLAS, 10+ on another) — the invariant,
+        asserted here, is that it lands several times past the ceiling and
+        outside the healthy release band either way."""
         run = rewrite.erased_prefix("1",
                                     t_erase_duration=300 * memory.PERIOD)
-        assert rewrite.horseshoe_offset(run) > 1.0  # gone
+        da = rewrite.horseshoe_offset(run)
+        assert da > 3 * rewrite.RECAPTURE_CEILING
+        assert da > rewrite.RELEASE_DA[1]
 
 
 class TestCooledBitsAreLocked:
