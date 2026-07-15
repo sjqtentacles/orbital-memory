@@ -22,6 +22,17 @@ memory.ERASE_KICK and the moonlet is flung from the resonance.
 A conditional erase is logic acting on memory: the bullet's presence is the
 input line, the stored bit is the target register.
 
+REWRITE by real physics (no grown planets anywhere):
+  * rewrite_cycle(old, new) = erase-by-flyby then insert-the-new-bit. Both
+    halves are individually real and tested, so the cell is genuinely
+    rewritable — this is the honest replacement for the old mass-pulse rewrite.
+  * flip() records the negative result behind that design: a SINGLE flyby
+    cannot transfer a bit L4<->L5. Sweeping the pass depth, the stored bit's
+    amplitude pumps but stays in its own island until, past a threshold, it
+    erases; no depth lands it in the opposite island. A single conservative
+    impulse can knock the guiding center out of a tadpole but not settle it
+    into the other one — so rewrite goes through erase + reinsert.
+
 Two physical facts run the implementation:
   * The bullet must be MASSIVE (a massless body exerts no force), and a
     massive intruder drags the system barycenter — so the readout uses the
@@ -154,3 +165,41 @@ def fire(cell, psi, t_end=T_VERDICT, n_samples=2000, rtol=1e-9, atol=1e-10):
     bodies = [dict(b) for b in cell] + [bullet_body(psi, launch_at)]
     return nbody.integrate(bodies, t_end, n_samples=n_samples, rtol=rtol,
                            atol=atol)
+
+
+def rewrite_cycle(old_bit, new_bit, amplitude_deg=6.0):
+    """Rewrite a stored bit using real physics only: ERASE the old bit with an
+    aimed flyby (the gate), then WRITE the new bit by orbit insertion. Both
+    halves are individually real and tested, so their composition is a reliable
+    rewrite — the honest replacement for the old (impossible) mass-pulse
+    rewrite. Returns the erase run and readout, the freshly inserted cell and
+    its insertion delta-v, and the reread new bit."""
+    from . import write
+    old_cell, _ = write.insert(old_bit, amplitude_deg=amplitude_deg)
+    psi, _ = aim(old_cell, MISS_ERASE)
+    erased = fire(old_cell, psi)
+    erased_label, _, _ = memory.classify(resonant_angle_com(erased))
+
+    new_cell, dv = write.insert(new_bit, amplitude_deg=amplitude_deg)
+    new_run = nbody.integrate([dict(b) for b in new_cell], T_VERDICT,
+                              n_samples=2000)
+    new_run["phi"] = memory.resonant_angle(new_run)
+    return {"erased": erased, "erased_label": erased_label,
+            "new_cell": new_cell, "insert_dv": dv, "new_run": new_run,
+            "new_bit": write.read(new_run)[0]}
+
+
+def flip(cell, miss):
+    """Fire one aimed flyby at signed closest approach `miss` and read the
+    resulting bit — the probe for whether a SINGLE flyby can transfer a bit
+    to the opposite island. Returns (label, center_deg, amp_deg).
+
+    The measured finding (see the module docstring): it cannot. As the pass
+    deepens the stored bit's libration amplitude pumps but stays in its own
+    island; past a threshold (~miss 0.004 here) it erases outright. There is
+    no pass depth that lands it in the other island — a single conservative
+    impulse can move the guiding center out of a tadpole but not settle it into
+    the opposite one. Rewriting therefore goes through erase + reinsert
+    (rewrite_cycle), never a one-shot flip."""
+    psi, _ = aim(cell, miss)
+    return memory.classify(resonant_angle_com(fire(cell, psi)))

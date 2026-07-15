@@ -1,85 +1,69 @@
-"""The WRITE operation: same blank, same pulse — timing selects the bit.
+"""Contract for WRITE by orbit insertion.
 
-The full memory cycle is now closed: blank -> write -> hold -> read (-> erase).
-The last test hands a freshly written bit to the full inertial N-body
-integrator and holds it there — write in the fast engine, verify in the
-honest one.
+Writing is placing the body in the chosen island: insert '1' -> it librates at
+L4, insert '0' -> L5, and the cost is a real insertion burn reported in m/s.
+No planet is grown. This replaces the old mass-growth write entirely.
 """
 
 import numpy as np
 import pytest
 
-from orbital import memory, nbody, rotating, write
+from orbital import memory, nbody, units, write
+
+
+class TestInsertionWritesTheBit:
+    def test_write_one_lands_at_L4(self):
+        assert write.read(write.write_bit("1"))[0] == "1"
+
+    def test_write_zero_lands_at_L5(self):
+        assert write.read(write.write_bit("0"))[0] == "0"
+
+    def test_written_amplitude_matches_request(self):
+        run = write.write_bit("1", amplitude_deg=6.0)
+        _, _, amp = write.read(run)
+        assert amp == pytest.approx(6.0, abs=2.5)
+
+    def test_wider_request_gives_wider_bit(self):
+        narrow = write.read(write.write_bit("1", amplitude_deg=6.0))[2]
+        wide = write.read(write.write_bit("1", amplitude_deg=30.0))[2]
+        assert wide > narrow + 15.0
+
+
+class TestInsertionBurn:
+    def test_dv_is_finite_and_reported_in_mps(self):
+        _, dv = write.insert("1")
+        assert dv > 0.0
+        mps = units.SUN_JUPITER.mps(dv)
+        assert 50.0 < mps < 1000.0            # a plausible L4 station-insertion cost
+
+    def test_bigger_transfer_costs_more(self):
+        _, small = write.insert("1", approach_da=0.03)
+        _, big = write.insert("1", approach_da=0.10)
+        assert big > small
+
+    def test_both_bits_cost_the_same(self):
+        _, a = write.insert("1")
+        _, b = write.insert("0")
+        assert a == pytest.approx(b, rel=1e-9)
 
 
 class TestBlankMedium:
-    def test_blank_is_coorbital_but_bitless(self):
-        run = rotating.integrate(write.blank(), 60 * memory.PERIOD,
-                                 n_samples=1500, mu=write.MU0)
-        label, _, _ = memory.classify(run["phi"])
-        assert label == "erased"          # horseshoe: no stored bit
-        # but genuinely co-orbital: no net circulation
-        u = np.unwrap(np.radians(run["phi"]))
-        assert abs(u[-1] - u[0]) < 1.5 * np.pi
+    def test_blank_reads_erased(self):
+        run = nbody.integrate(write.blank_cell(), 60 * memory.PERIOD, n_samples=3000)
+        run["phi"] = memory.resonant_angle(run)
+        assert write.read(run)[0] == "erased"
 
 
-class TestWrite:
-    def test_write_one(self):
-        run = write.write_bit("1")
-        bit, center, amp = write.read(run)
-        assert bit == "1"
-        assert center > 0                 # leading side (L4)
-        assert amp < 120.0                # a genuine tadpole, not a horseshoe
-
-    def test_write_zero(self):
-        run = write.write_bit("0")
-        bit, center, amp = write.read(run)
-        assert bit == "0"
-        assert center < 0                 # trailing side (L5)
-        assert amp < 120.0
-
-    def test_same_hardware_only_timing_differs(self):
-        """The write pulse is identical in shape; only its start time changes.
-        This is the defining property of the mechanism."""
-        assert write.WRITE_DELAY["1"] != write.WRITE_DELAY["0"]
-        b1, b2 = write.blank(), write.blank()
-        assert np.array_equal(b1, b2)
+class TestWrittenBitIsHonest:
+    def test_survives_full_nbody_hold_with_conserved_jacobi(self):
+        from orbital import theory
+        run = write.write_bit("1", periods=45)
+        C = theory.jacobi_of(run)
+        n = len(C) // 3
+        assert abs(C[:n].mean() - C[-n:].mean()) < 1e-6     # no secular drift
+        assert write.read(run)[0] == "1"
 
     def test_write_is_deterministic(self):
         a = write.write_bit("1")
         b = write.write_bit("1")
-        assert np.array_equal(a["xy"], b["xy"])
-
-    def test_read_window_is_in_orbits_not_samples(self):
-        """read() must give the same verdict regardless of sampling density —
-        the window is physical time (orbits), not an index count."""
-        dense = write.write_bit("1", n_samples=3000)
-        sparse = write.write_bit("1", n_samples=600)
-        assert write.read(dense)[0] == "1"
-        assert write.read(sparse)[0] == "1"
-
-    def test_scan_delays_uses_production_path(self):
-        """The datasheet scan must be the production write with a different
-        delay — same blank, same pulse shape, same read. Canonical delays in
-        the scan must reproduce the canonical bits."""
-        delays = [write.WRITE_DELAY["1"], write.WRITE_DELAY["0"]]
-        out = write.scan_delays(delays)
-        assert out[0]["bit"] == "1" and out[1]["bit"] == "0"
-
-
-class TestWriteThenHold:
-    @pytest.mark.parametrize("bit,label", [("1", "L4"), ("0", "L5")])
-    def test_written_bit_survives_in_full_nbody(self, bit, label):
-        """Write with the fast rotating-frame engine, then hold the result in
-        the full inertial 3-body integrator for 40 more orbits: the bit must
-        persist across engines — no artifact of the restricted approximation."""
-        run = write.write_bit(bit)
-        bodies = write.written_cell_bodies(run)
-        held = nbody.integrate(bodies, 40 * memory.PERIOD, n_samples=2000)
-        phi = memory.resonant_angle(held)
-        got, _, _ = memory.classify(phi)
-        assert got == label
-        # the moonlet's own invariant (energy_drift only sees the primaries)
-        from orbital import theory
-        C = theory.jacobi_of(held)
-        assert (C.max() - C.min()) < 1e-9
+        assert np.array_equal(a["traj"], b["traj"])

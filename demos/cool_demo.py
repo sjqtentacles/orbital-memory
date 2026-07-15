@@ -18,15 +18,15 @@ from matplotlib.collections import LineCollection
 
 from demos.style import (DIM, DOCS, GOOD, GROUND, HORSE, L4C, PLANET, STAR,
                          optimize_gif)
-from orbital import cool, memory, theory, write
+from orbital import cool, memory, rotating, theory
 
 FRAMES = 170
 
 
 def main():
     DOCS.mkdir(exist_ok=True)
-    wide = write.write_bit("1")
-    cooled = cool.cool(wide["yf"], t0=wide["t"][-1])
+    wide_seed = rotating.lagrange_tadpole("L4", libration_deg=60.0)
+    cooled = cool.cool(wide_seed, t0=0.0)
     label, center, amp = memory.classify(cooled["phi"][-800:])
     assert label == "L4", f"cool demo produced {label}"
     print(f"cooled: {cooled['n_kicks']} burns -> amp {amp:.1f} deg")

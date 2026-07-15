@@ -1,101 +1,94 @@
-"""WRITE: set the bit by growing the secondary — the horseshoe pinch.
+"""WRITE: set the bit by ORBIT INSERTION — a real, actuatable placement.
 
-The blank medium is a HORSESHOE co-orbital: bound to the 1:1 resonance but
-holding no bit (it sweeps through both islands; reads 'erased'). The write
-pulse is a slow, smooth growth of the secondary's mass (mass transferred from
-the primary, total fixed — the circular kinematics stay exact). Growing mu
-widens the tadpole islands as ~sqrt(mu); when the separatrix sweeps past the
-horseshoe's radial offset, the horseshoe PINCHES and the moonlet is captured
-into whichever island it is transiting at that moment. The pulse TIMING —
-not its shape — selects the bit.
+The bit is which island the body librates in, so writing is *delivering the
+body into the chosen island*. That is exactly how you would station a
+spacecraft at L4/L5, and the conservative analog of how nature parks a body
+in a Trojan orbit: arrive on a co-orbital transfer and perform one insertion
+burn that drops you onto a tadpole.
 
-Why this and not something simpler:
-  * an impulsive kick cannot write — one conservative kick can only move the
-    state along the energy surface, and (verified) super-threshold kicks
-    scatter the body out of the resonance entirely: kicks ERASE;
-  * dissipation cannot write — drag destabilizes L4/L5 (verified earlier);
-  * a slow parameter change CAN — adiabatic capture is robust precisely
-    because it doesn't need aim, only timing (Neishtadt, Henrard). This is
-    the mechanism by which a growing Jupiter captured its Trojans.
+Concretely: the target is a tadpole turning point around L4 (bit '1') or L5
+(bit '0') — a point on the corotation circle, `amplitude_deg` from the exact
+triangular point, where the rotating-frame velocity is nearly zero. The body
+arrives there on a Hohmann-like transfer whose apoapsis just touches the
+co-orbital ring from `approach_da` inside; the insertion burn is the prograde
+delta-v that circularizes it at that longitude. After the burn the body is in
+a tadpole of the requested amplitude — a stored bit. We report the burn in
+metres per second (orbital.units): a bit costs propellant to place, and that
+is the honest cost, not a grown planet.
 
-Canonical schedule (mu: 3e-4 -> memory.MU over 100 orbits, blank horseshoe at
-da = 0.030): pulse delays of ~8-12 orbits write '1' (L4), ~28-36 write '0'
-(L5), calibrated by demos/write_demo.py's timing scan.
+No mass is grown or shrunk anywhere. Rewriting and erasing are done by real
+gravitational flybys (orbital/gate.py), not by changing the planet.
 """
 
 import numpy as np
 
-from . import memory, nbody, rotating
+from . import memory, nbody
 
-MU0 = 3e-4            # blank-medium mass ratio (horseshoe regime at DA)
-DA = 0.030            # blank horseshoe's radial offset
-PHI0 = 180.0          # blank starts opposite the secondary (far from pinch)
-T_RAMP = 100 * memory.PERIOD   # write-pulse duration (adiabatic: >> libration)
-T_HOLD = 50 * memory.PERIOD    # settle-and-read window after the pulse
-WRITE_DELAY = {"1": 12 * memory.PERIOD,   # fire while transiting the L4 side
-               "0": 30 * memory.PERIOD}   # fire while transiting the L5 side
-# Deep-capture delays calibrated by the timing scan in demos/write_demo.py:
-# captures clear the L3 separatrix by ~46-49 deg and conjunction by ~25 deg.
-# Neighbouring delays sit on capture fringes (slow horseshoes) — the guard
-# bands between write windows are real and part of the datasheet.
+# Default insertion geometry.
+AMP0 = 6.0          # deg — default written libration amplitude (a deep bit)
+APPROACH_DA = 0.05  # co-orbital transfer apoapsis offset (sets the burn size)
 
 
-def blank():
-    """The unwritten medium: a horseshoe moonlet at mass ratio MU0."""
-    return rotating.circular_coorbital(phi0_deg=PHI0, da=DA)
+def insert(bit, amplitude_deg=AMP0, approach_da=APPROACH_DA, mu=memory.MU):
+    """Write `bit` by inserting the body into its island.
+
+    Returns (cell, dv): `cell` is [star, planet, moonlet] with the moonlet
+    placed on a tadpole of amplitude ~amplitude_deg around L4 ('1') or L5
+    ('0'); `dv` is the NONDIMENSIONAL insertion-burn magnitude (circularizing
+    a co-orbital transfer that reaches the ring from `approach_da` inside).
+    Convert to m/s with units.System.mps."""
+    point = "L4" if str(bit) == "1" else "L5"
+    cell = memory.make_cell(point, mu=mu, libration_deg=amplitude_deg)
+    r = float(np.linalg.norm(cell[2]["pos"]))     # target radius (~1)
+    # circularization burn: v_circ(r) minus the transfer's apoapsis speed, for a
+    # transfer with apoapsis r and periapsis r - approach_da (G*M_tot = 1).
+    v_circ = np.sqrt(1.0 / r)
+    a_t = r - approach_da / 2.0
+    v_apo = np.sqrt(max(2.0 / r - 1.0 / a_t, 0.0))
+    dv = float(v_circ - v_apo)
+    return cell, dv
 
 
-def write_pulse(delay, n_samples=1500, rtol=1e-9, atol=1e-10):
-    """The production write pipeline for an arbitrary pulse delay: position
-    along the blank horseshoe for `delay`, fire the growth pulse, settle.
-    write_bit() and scan_delays() are both thin wrappers over this."""
-    ramp = rotating.smooth_ramp(MU0, memory.MU, t_ramp=T_RAMP, t0=delay)
-    return rotating.integrate(blank(), delay + T_RAMP + T_HOLD,
-                              n_samples=n_samples, mu=ramp,
-                              rtol=rtol, atol=atol)
-
-
-def write_bit(bit, n_samples=1500, rtol=1e-9, atol=1e-10):
-    """Write '1' (L4) or '0' (L5) into a blank cell by pulse timing alone.
-
-    Same blank state, same pulse shape — only the firing time differs.
-    Returns the full run; read the result with read()."""
-    run = write_pulse(WRITE_DELAY[str(bit)], n_samples=n_samples,
-                      rtol=rtol, atol=atol)
+def write_bit(bit, amplitude_deg=AMP0, periods=45, n_samples=None,
+              mu=memory.MU):
+    """Insert `bit` and integrate the resulting cell in the full inertial
+    N-body engine. Returns the run with 'phi' (resonant angle), 'bit', 'dv'
+    (nondimensional insertion burn), and 'cell' attached. Read it with read()."""
+    cell, dv = insert(bit, amplitude_deg=amplitude_deg, mu=mu)
+    if n_samples is None:
+        n_samples = int(periods * 60)
+    run = nbody.integrate(cell, periods * memory.PERIOD, n_samples=n_samples)
+    run["phi"] = memory.resonant_angle(run)
     run["bit"] = str(bit)
+    run["dv"] = dv
+    run["cell"] = cell
     return run
 
 
-def read(run, window_orbits=45.0):
+def blank_cell(mu=memory.MU, da=0.08, phi0_deg=90.0):
+    """The unwritten medium: a co-orbital body on a ring `da` outside the
+    planet's orbit, wide enough to circulate/horseshoe rather than librate — it
+    holds no bit and reads 'erased'. This is the arrival state that insertion
+    acts on, and the state an erasing flyby leaves behind."""
+    star, planet = memory.primaries(mu)
+    a = 1.0 + da
+    phi = np.radians(phi0_deg)
+    pos = [a * np.cos(phi), a * np.sin(phi)]
+    v_circ = np.sqrt(1.0 / a)
+    vel = [-v_circ * np.sin(phi), v_circ * np.cos(phi)]
+    return [star, planet, {"m": 0.0, "pos": pos, "vel": vel}]
+
+
+def read(run, window_orbits=40.0):
     """Read the stored bit from the tail of a run.
 
-    Returns (bit, center_deg, amp_deg) where bit is '1' (L4), '0' (L5), or
-    the string 'erased' — callers must handle the three-valued result.
-    The window is PHYSICAL TIME (orbits), converted to samples from the run's
-    own clock, so the verdict is independent of sampling density. It must
-    exceed one wide-tadpole libration cycle (~40 orbits), else a slow
-    horseshoe can masquerade as a stored bit."""
+    Returns (bit, center_deg, amp_deg) with bit '1' (L4), '0' (L5), or the
+    string 'erased'. The window is physical time (orbits), converted to samples
+    from the run's own clock, so the verdict is independent of sampling density.
+    It must exceed one wide-tadpole libration cycle, else a slow horseshoe can
+    masquerade as a stored bit."""
     t = run["t"]
     t_cut = t[-1] - window_orbits * memory.PERIOD
     idx = int(np.searchsorted(t, t_cut))
     label, center, amp = memory.classify(run["phi"][idx:])
     return {"L4": "1", "L5": "0"}.get(label, "erased"), center, amp
-
-
-def scan_delays(delays, n_samples=1500, rtol=1e-9, atol=1e-10):
-    """The timing-diagram experiment, on the PRODUCTION write path: for each
-    pulse delay (time units), run the exact write pipeline (same blank, same
-    pulse shape, same tolerances, same read) and record the outcome.
-    Returns a list of {'delay', 'bit', 'center', 'amp'} dicts."""
-    out = []
-    for delay in delays:
-        run = write_pulse(delay, n_samples=n_samples, rtol=rtol, atol=atol)
-        bit, center, amp = read(run)
-        out.append({"delay": delay, "bit": bit, "center": center, "amp": amp})
-    return out
-
-
-def written_cell_bodies(run):
-    """Hand the freshly written cell to the full inertial N-body integrator
-    (star, planet, moonlet) for an honest hold test at constant mu."""
-    return rotating.to_inertial_bodies(run["yf"], run["t"][-1], mu=memory.MU)

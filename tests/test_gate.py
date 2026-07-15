@@ -85,6 +85,35 @@ class TestConditionalErase:
         assert np.array_equal(a["traj"], b["traj"])
 
 
+class TestRewriteByFlyby:
+    def test_rewrite_one_to_zero(self):
+        """The guaranteed real rewrite: erase '1' with a flyby, insert '0'."""
+        r = gate.rewrite_cycle("1", "0")
+        assert r["erased_label"] == "erased"
+        assert r["new_bit"] == "0"
+
+    def test_rewrite_zero_to_one(self):
+        r = gate.rewrite_cycle("0", "1")
+        assert r["new_bit"] == "1"
+
+    def test_rewrite_reports_a_real_insertion_burn(self):
+        from orbital import units
+        r = gate.rewrite_cycle("1", "0")
+        assert 50.0 < units.SUN_JUPITER.mps(r["insert_dv"]) < 1000.0
+
+
+class TestSingleFlybyCannotFlip:
+    @pytest.mark.slow
+    def test_no_pass_depth_transfers_to_the_other_island(self, cell):
+        """The negative result behind erase+reinsert: sweeping the pass depth,
+        a single flyby on an L4 bit reads L4 (amplitude pumped) or 'erased' —
+        never L5. One conservative impulse cannot settle the guiding center
+        into the opposite island."""
+        for miss in (0.030, 0.020, 0.012, 0.006, 0.002):
+            label, _, _ = gate.flip(cell, miss)
+            assert label in ("L4", "erased")
+
+
 class TestComReadout:
     def test_com_correction_matters(self, cell, aimed):
         """The bullet drags the barycenter, so the origin-anchored readout

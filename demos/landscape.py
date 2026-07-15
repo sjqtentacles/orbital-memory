@@ -18,7 +18,12 @@ import numpy as np
 
 from demos.style import (CIRC, DIM, DOCS, GROUND, HORSE, L4C, L5C, PLANET,
                          STAR)
-from orbital import memory, rotating, theory, write
+from orbital import memory, rotating, theory
+
+# mass ratio / offset for the anatomy figure: a small-mu medium where tadpoles,
+# horseshoe, and circulation all coexist cleanly for illustration.
+ANATOMY_MU0 = 3e-4
+ANATOMY_DA = 0.030
 
 MU = memory.MU
 
@@ -97,10 +102,9 @@ def landscape():
 
 
 def anatomy():
-    """Drawn at the write-time mass ratio write.MU0, where all four states
-    coexist cleanly (at the full cell mu the horseshoe band sits in the
-    chaotic layer — which is exactly why the write STARTS at mu0)."""
-    mu0 = write.MU0
+    """Drawn at a small mass ratio where all four states coexist cleanly (at
+    the full cell mu the horseshoe band sits in the chaotic layer)."""
+    mu0 = ANATOMY_MU0
     fig, ax = _fig_ax("the four states of the medium — "
                       "tadpoles (bits), horseshoe, circulation\n"
                       r"(drawn at the write-time mass ratio $\mu_0 = 3\times10^{-4}$)")
@@ -115,8 +119,7 @@ def anatomy():
         ax.plot(r["xy"][:, 0], r["xy"][:, 1], color=col, lw=1.6, label=lab,
                 zorder=5)
     # erased: a horseshoe — sweeps through L3, turns around near the secondary
-    # (drawn at the blank medium's exact offset write.DA)
-    hs = rotating.integrate(rotating.circular_coorbital(180.0, da=write.DA),
+    hs = rotating.integrate(rotating.circular_coorbital(180.0, da=ANATOMY_DA),
                             150 * T, n_samples=5000, mu=mu0)
     ax.plot(hs["xy"][:, 0], hs["xy"][:, 1], color=HORSE, lw=0.9, alpha=0.9,
             label="horseshoe  ·  erased", zorder=4)

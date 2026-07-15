@@ -34,6 +34,7 @@ ERASE_KICK = 0.035
 # A few real co-orbital mass ratios (secondary / total), for reference and
 # for parameterizing the cell at moon scale. Libration slows as ~1/sqrt(mu).
 MU_SUN_JUPITER = 9.54e-4       # the classic Jupiter Trojans
+MU_SUN_EARTH = 3.00e-6         # 2010 TK7, Earth's (large-amplitude) Trojan
 MU_SATURN_TETHYS = 1.09e-6     # Telesto & Calypso ride Tethys's L4/L5
 MU_SATURN_DIONE = 1.85e-6      # Helene & Polydeuces ride Dione's L4/L5
 
@@ -69,6 +70,44 @@ def make_cell(state="L4", mu=MU, libration_deg=6.0):
     return [star, planet, particle]
 
 
+def primaries_eccentric(mu=MU, e=0.0489, a=1.0):
+    """Star + planet on a Kepler orbit of relative semimajor axis `a` and
+    eccentricity `e`, started at periapsis (barycenter at the origin,
+    G*M_tot = 1). Real Jupiter has e ~ 0.0489. Reduces to primaries() at e=0."""
+    r_peri = a * (1 - e)
+    v_peri = np.sqrt((1 + e) / (1 - e) / a)     # vis-viva at periapsis, GM=1
+    r_rel = np.array([r_peri, 0.0])
+    v_rel = np.array([0.0, v_peri])
+    star = {"m": 1 - mu, "pos": (-mu * r_rel).tolist(),
+            "vel": (-mu * v_rel).tolist()}
+    planet = {"m": mu, "pos": ((1 - mu) * r_rel).tolist(),
+              "vel": ((1 - mu) * v_rel).tolist()}
+    return star, planet
+
+
+def make_cell_eccentric(state="L4", mu=MU, e=0.0489, libration_deg=6.0, a=1.0):
+    """A tadpole bit around L4/L5 of an ECCENTRIC (elliptic restricted) system.
+
+    The equilateral point is a central configuration: L4/L5 relative to the
+    barycenter is a fixed linear image of the star->planet vector,
+    M = (1/2 - mu) I + (sqrt3/2) J (J a +/-90-deg rotation for L4/L5). Seeding
+    the particle at M r_rel with velocity M v_rel puts it exactly on the
+    pulsating-rotating equilateral solution; a small `libration_deg` nudge sets
+    it librating. The whole tadpole then breathes at the planet's orbital
+    frequency."""
+    star, planet = primaries_eccentric(mu, e, a)
+    r_rel = np.array(planet["pos"]) - np.array(star["pos"])
+    v_rel = np.array(planet["vel"]) - np.array(star["vel"])
+    sy = 1.0 if state == "L4" else -1.0
+    J = sy * np.array([[0.0, -1.0], [1.0, 0.0]])       # +90 (L4) / -90 (L5)
+    M = (0.5 - mu) * np.eye(2) + (np.sqrt(3) / 2) * J
+    pos, vel = M @ r_rel, M @ v_rel
+    R = _rot(np.radians(libration_deg))                # nudge along the orbit
+    pos, vel = R @ pos, R @ vel
+    particle = {"m": 0.0, "pos": pos.tolist(), "vel": vel.tolist()}
+    return [star, planet, particle]
+
+
 def make_cell_3d(state="L4", mu=MU, libration_deg=6.0, inclination_z=0.16):
     """3D inclined Trojan: the in-plane tadpole of make_cell, plus the particle
     lifted to height z = inclination_z with zero vertical velocity, so it bobs
@@ -85,6 +124,32 @@ def make_cell_3d(state="L4", mu=MU, libration_deg=6.0, inclination_z=0.16):
                 "pos": [pos[0], pos[1], inclination_z],
                 "vel": [vel[0], vel[1], 0.0]}
     return [star, planet, particle]
+
+
+# Real Saturn, in Sun-Jupiter units (total Sun+Jupiter mass = 1, a_Jupiter = 1).
+MASS_SATURN = 2.855e-4     # M_Saturn / (M_Sun + M_Jupiter)
+A_SATURN = 1.8412          # a_Saturn / a_Jupiter (9.582 AU / 5.204 AU)
+
+
+def sun_jupiter_saturn_cell(state="L4", libration_deg=6.0,
+                            mu=MU_SUN_JUPITER, with_saturn=True,
+                            saturn_phase_deg=180.0):
+    """A Jupiter Trojan bit, optionally with real Saturn as a 4th body.
+
+    Bodies: [Sun, Jupiter, Trojan(massless), Saturn]. Saturn rides a circular
+    orbit at the real spacing A_SATURN with the real mass ratio MASS_SATURN,
+    started `saturn_phase_deg` from Jupiter. This is the real mechanism that
+    erodes the Trojan swarm; with_saturn=False is the unperturbed control."""
+    cell = make_cell(state, mu=mu, libration_deg=libration_deg)
+    if not with_saturn:
+        return cell
+    ang = np.radians(saturn_phase_deg)
+    r = A_SATURN
+    pos = np.array([r * np.cos(ang), r * np.sin(ang)])
+    v = np.sqrt(1.0 / r)                        # circular about the interior mass
+    vel = np.array([-v * np.sin(ang), v * np.cos(ang)])
+    saturn = {"m": MASS_SATURN, "pos": pos.tolist(), "vel": vel.tolist()}
+    return cell + [saturn]
 
 
 def resonant_angle(res, particle=2, planet=1):
@@ -169,6 +234,22 @@ def libration_period(mu=MU):
     mu: T = 2*pi / sqrt(27/4 * mu), in the same time units (planet period 2*pi).
     Used to validate the simulation against linearized Trojan theory."""
     return 2 * np.pi / np.sqrt(27.0 / 4.0 * mu)
+
+
+def measured_libration_period(t, phi):
+    """Measure the tadpole libration period from a resonant-angle series phi(t):
+    twice the mean spacing between successive crossings of the libration center
+    (sub-sample interpolated). This is the simulation's answer to compare
+    against libration_period() and against observed Trojan periods once
+    converted to years. Requires at least two center crossings."""
+    t = np.asarray(t, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+    s = phi - _circular_mean_deg(phi)
+    idx = np.where(np.diff(np.sign(s)) != 0)[0]
+    if len(idx) < 2:
+        raise ValueError("measured_libration_period: need >= 2 center crossings")
+    tc = [t[i] + s[i] / (s[i] - s[i + 1]) * (t[i + 1] - t[i]) for i in idx]
+    return 2.0 * float(np.mean(np.diff(tc)))
 
 
 def state_to_bodies(res, mu=MU):

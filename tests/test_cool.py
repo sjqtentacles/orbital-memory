@@ -1,9 +1,9 @@
 """Contract for bit cooling.
 
-A pinch-written bit librates wide (~±70°, inherited from the horseshoe's
-phase-space area). Cooling shrinks it with tangential station-keeping burns
-that damp the co-orbital pendulum's momentum (the radial offset da = r − 1),
-each far below the erase threshold. Cooling must preserve the stored value,
+A wide bit librates ~±60°. Cooling shrinks it with tangential station-keeping
+burns that damp the co-orbital pendulum's momentum (the radial offset
+da = r − 1), each far below the erase threshold — honest spacecraft
+station-keeping, a few m/s of delta-v. Cooling must preserve the stored value,
 move the Jacobi constant toward the deep-band floor C_L4, and produce a bit
 that survives in the full inertial N-body engine.
 
@@ -15,18 +15,19 @@ documentation; these tests pin the one that works.)
 import numpy as np
 import pytest
 
-from orbital import cool, memory, nbody, rotating, theory, write
+from orbital import cool, memory, nbody, rotating, theory
 
 
 @pytest.fixture(scope="module")
-def wide():
-    """An honest wide bit: freshly pinch-written '1'."""
-    return write.write_bit("1")
+def wide_seed():
+    """A wide (~62 deg) L4 tadpole in the rotating frame — a freshly placed
+    bit that needs cooling."""
+    return rotating.lagrange_tadpole("L4", libration_deg=60.0)
 
 
 @pytest.fixture(scope="module")
-def cooled(wide):
-    return cool.cool(wide["yf"], t0=wide["t"][-1])
+def cooled(wide_seed):
+    return cool.cool(wide_seed, t0=0.0)
 
 
 def _read_tail(run, window_orbits=20):
@@ -36,9 +37,10 @@ def _read_tail(run, window_orbits=20):
 
 
 class TestCooling:
-    def test_wide_bit_starts_wide(self, wide):
-        bit, center, amp = write.read(wide)
-        assert bit == "1"
+    def test_wide_bit_starts_wide(self, wide_seed):
+        run = rotating.integrate(wide_seed, 30 * memory.PERIOD, n_samples=1500)
+        label, center, amp = memory.classify(run["phi"])
+        assert label == "L4"
         assert amp > 55.0
 
     def test_cooling_shrinks_amplitude(self, cooled):
@@ -77,6 +79,6 @@ class TestCooling:
         C = theory.jacobi_of(held)
         assert (C.max() - C.min()) < 1e-9
 
-    def test_cooling_is_deterministic(self, wide, cooled):
-        again = cool.cool(wide["yf"], t0=wide["t"][-1])
+    def test_cooling_is_deterministic(self, wide_seed, cooled):
+        again = cool.cool(wide_seed, t0=0.0)
         assert np.array_equal(again["xy"], cooled["xy"])

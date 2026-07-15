@@ -1,9 +1,10 @@
-"""COOL: shrink a wide written bit into a deep one with tangential burns.
+"""COOL: shrink a wide bit into a deep one with station-keeping burns.
 
-A pinch-written tadpole librates ±70° — it inherited the horseshoe's
-phase-space area, and adiabatic processes cannot shed area. Cooling is the
-deliberately non-adiabatic step, and getting it right took three wrong
-schemes, each instructive enough to record:
+This is honest spacecraft station-keeping: the stored body is a spacecraft
+with a small propulsion budget, and cooling spends a few metres per second of
+delta-v to damp a wide libration into a deep, robust one. A wide bit librates
+±70°; cooling brings it below 30°. Getting it right took three wrong schemes,
+each instructive enough to record:
 
   * retro-kicks at max rotating-frame speed — expelled the moonlet through
     the L1 neck within kicks (C_J does not confine radially; an inner
@@ -33,10 +34,9 @@ C_J. Cooling's correctness certificate is operational (amplitude down,
 value preserved, survives the honest engine) — the jacobi_gap it reports
 records the direction of travel, nothing more.
 
-Corollary worth stating loudly: cooling WRITE-PROTECTS the bit. The
-mu-shrink erase (orbital/rewrite.py) only releases orbits whose area exceeds
-the small-mu island's; a cooled bit's area is far below that, so the erase
-pulse no longer frees it. Cold storage is locked storage.
+A deep bit is also a hardened bit: a cooled tadpole sits farther from every
+separatrix, so it takes a larger perturbation (a closer flyby) to erase it.
+Cold storage is robust storage.
 """
 
 import numpy as np
@@ -61,7 +61,7 @@ def jacobi_rotating(state, mu=memory.MU):
 
 def cool(state, t0=0.0, mu=memory.MU, target_amp=TARGET_AMP, damp=DAMP,
          cap=CAP, max_rounds=MAX_ROUNDS, rtol=1e-9, atol=1e-10):
-    """Cool a rotating-frame state (e.g. a written run's yf) at constant mu.
+    """Cool a rotating-frame state (a wide tadpole) at constant mu.
 
     Coast up to WINDOW, read the libration; if still wider than target_amp,
     burn tangentially at the largest safe radial offset and repeat. Returns a

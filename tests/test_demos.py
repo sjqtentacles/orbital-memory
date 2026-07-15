@@ -12,7 +12,8 @@ import pathlib
 import pytest
 
 DEMOS = ["flipflop_demo", "flipflop_3d", "landscape", "make_gifs",
-         "write_demo", "style"]
+         "cool_demo", "gate_demo", "validation", "phase_portrait",
+         "stability_map", "insert_demo", "swarm", "saturn_erosion", "style"]
 
 
 @pytest.mark.parametrize("name", DEMOS)
@@ -22,13 +23,17 @@ def test_demo_imports(name):
 
 
 def test_demo_entry_points_exist():
-    from demos import flipflop_3d, flipflop_demo, landscape, make_gifs, write_demo
+    from demos import (cool_demo, flipflop_3d, flipflop_demo, gate_demo,
+                       insert_demo, landscape, make_gifs, phase_portrait,
+                       saturn_erosion, stability_map, swarm, validation)
     assert callable(flipflop_demo.main)
     assert callable(flipflop_demo.noise_margin)
     assert callable(flipflop_3d.main)
     assert callable(make_gifs.main)
     assert callable(landscape.landscape) and callable(landscape.anatomy)
-    assert callable(write_demo.timing) and callable(write_demo.gif)
+    for mod in (cool_demo, gate_demo, validation, phase_portrait,
+                stability_map, insert_demo, swarm, saturn_erosion):
+        assert callable(mod.main)
 
 
 def test_style_palette_and_optimize():

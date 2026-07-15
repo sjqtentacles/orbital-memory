@@ -2,8 +2,9 @@
 
 The rotating frame is the memory's natural coordinate system: the primaries
 sit still, L4/L5 are fixed points, and the resonant angle is just atan2(y, x).
-It must agree with the full inertial N-body integrator wherever they overlap,
-and it must support a time-dependent mass ratio mu(t) — the write mechanism.
+It must agree with the full inertial N-body integrator wherever they overlap.
+This is the analysis/phase-portrait engine; the memory operations run in the
+inertial nbody engine.
 """
 
 import numpy as np
@@ -72,54 +73,12 @@ class TestPhiReadout:
                                       rel=0.25)             # matches -1.5 da t
 
 
-class TestTimeDependentMu:
+class TestCallableMu:
     def test_constant_callable_matches_scalar(self):
+        """mu may still be passed as a callable (kept for generality); a
+        constant callable must reproduce the scalar path exactly."""
         state0 = rotating.lagrange_tadpole("L4", libration_deg=6.0)
         a = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=400)
         b = rotating.integrate(state0, 10 * memory.PERIOD, n_samples=400,
                                mu=lambda t: memory.MU)
         assert np.allclose(a["xy"], b["xy"], atol=1e-9)
-
-    def test_growth_ramp_is_smooth_and_bounded(self):
-        ramp = rotating.smooth_ramp(mu0=2e-4, mu1=3e-3, t_ramp=100.0)
-        ts = np.linspace(-5, 200, 1000)
-        vals = np.array([ramp(t) for t in ts])
-        assert vals.min() >= 2e-4 - 1e-12
-        assert vals.max() <= 3e-3 + 1e-12
-        assert np.all(np.diff(vals) >= -1e-12)  # monotone
-        assert ramp(0.0) == pytest.approx(2e-4)
-        assert ramp(150.0) == pytest.approx(3e-3)
-
-    def test_ramp_down_is_monotone_decreasing(self):
-        """smooth_ramp must also run in reverse — the ERASE pulse."""
-        down = rotating.smooth_ramp(mu0=3e-3, mu1=2e-4, t_ramp=100.0)
-        ts = np.linspace(-5, 200, 500)
-        vals = np.array([down(t) for t in ts])
-        assert vals[0] == pytest.approx(3e-3)
-        assert vals[-1] == pytest.approx(2e-4)
-        assert np.all(np.diff(vals) <= 1e-12)
-
-
-class TestMuSchedule:
-    def test_piecewise_values(self):
-        """Hold, grow, hold, shrink, hold — a full write/erase composite."""
-        sched = rotating.mu_schedule(1e-4, [(10.0, 20.0, 3e-3),
-                                            (50.0, 20.0, 1e-4)])
-        assert sched(0.0) == pytest.approx(1e-4)
-        assert sched(10.0) == pytest.approx(1e-4)
-        assert sched(30.0) == pytest.approx(3e-3)   # after leg 1
-        assert sched(45.0) == pytest.approx(3e-3)   # holding
-        assert sched(70.0) == pytest.approx(1e-4)   # after leg 2
-        assert sched(1e6) == pytest.approx(1e-4)
-
-    def test_matches_chained_ramps(self):
-        """One schedule leg must equal the equivalent single smooth_ramp."""
-        sched = rotating.mu_schedule(2e-4, [(5.0, 30.0, 3e-3)])
-        ramp = rotating.smooth_ramp(2e-4, 3e-3, t_ramp=30.0, t0=5.0)
-        ts = np.linspace(0, 60, 400)
-        assert np.allclose([sched(t) for t in ts], [ramp(t) for t in ts])
-
-    def test_legs_must_be_ordered_and_disjoint(self):
-        with pytest.raises(ValueError):
-            rotating.mu_schedule(1e-4, [(10.0, 20.0, 3e-3),
-                                        (15.0, 20.0, 1e-4)])  # overlaps leg 1

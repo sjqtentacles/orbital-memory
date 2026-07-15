@@ -3,17 +3,15 @@
 Here the primaries sit still on the x-axis, L4/L5 are literal fixed points,
 the resonant angle is atan2(y, x), and the memory's phase-space anatomy
 (tadpole islands, horseshoe band, circulation) is visible to the naked eye.
-Integrating 4 ODEs instead of 12 makes parameter sweeps ~2 orders of
-magnitude cheaper than the full inertial N-body — and, crucially, the mass
-ratio may be TIME-DEPENDENT, which is the write mechanism: growing the
-secondary adiabatically captures a circulating body into a chosen island,
-the same way a growing Jupiter captured its Trojans.
+Integrating 4 ODEs instead of 12 makes the parameter sweeps and phase
+portraits ~2 orders of magnitude cheaper than the full inertial N-body. This
+is the analysis/visualization engine; the memory operations themselves (write
+by insertion, rewrite/erase by flyby) run in the honest inertial nbody engine.
 
 Equations of motion (n = 1, total mass 1, separation 1, barycenter origin):
     x'' - 2 y' = dOmega/dx,   y'' + 2 x' = dOmega/dy
-with the primaries pinned at (-mu, 0) and (1-mu, 0). For time-dependent
-mu(t) the mass is transferred star -> planet (total fixed at 1), so the
-circular two-body kinematics stay exact throughout the ramp.
+with the primaries pinned at (-mu, 0) and (1-mu, 0). The mass ratio mu may be
+a callable mu(t) (kept for generality), but the memory no longer modulates it.
 """
 
 import numpy as np
@@ -40,49 +38,13 @@ def _rhs(t, s, mu_of_t):
     return [vx, vy, ax, ay]
 
 
-def smooth_ramp(mu0, mu1, t_ramp, t0=0.0):
-    """A C^1 monotone mass-transfer schedule: mu0 before t0, smoothstep over
-    [t0, t0 + t_ramp], mu1 after. Runs up (the write pulse) or down (the
-    erase pulse) — smoothstep interpolation is direction-agnostic."""
-    def mu_of_t(t):
-        s = np.clip((t - t0) / t_ramp, 0.0, 1.0)
-        return mu0 + (mu1 - mu0) * (3 * s * s - 2 * s ** 3)
-    return mu_of_t
-
-
-def mu_schedule(mu_init, legs):
-    """Composite C^1 mu(t): hold mu_init, then for each leg
-    (t_start, t_ramp, mu_target) smoothstep to the target and hold it until
-    the next leg. Lets a full write -> store -> erase -> rewrite cycle run
-    as ONE integration. Legs must be time-ordered and non-overlapping."""
-    prev_end = -np.inf
-    for t_start, t_ramp, _ in legs:
-        if t_start < prev_end:
-            raise ValueError("mu_schedule legs must be ordered and disjoint")
-        prev_end = t_start + t_ramp
-
-    def mu_of_t(t):
-        cur = mu_init
-        for t_start, t_ramp, target in legs:
-            if t <= t_start:
-                return cur
-            s = min((t - t_start) / t_ramp, 1.0)
-            val = cur + (target - cur) * (3 * s * s - 2 * s ** 3)
-            if t < t_start + t_ramp:
-                return val
-            cur = target
-        return cur
-    return mu_of_t
-
-
 def integrate(state0, t_end, n_samples=2000, mu=MU, rtol=1e-11, atol=1e-12,
               t0=0.0):
     """Integrate a rotating-frame state [x, y, vx, vy].
 
     mu may be a scalar (constant) or a callable mu(t). Returns t, xy, v,
     phi (the resonant angle, degrees), mu(t) samples, and the Jacobi
-    'constant' time series (exactly conserved only for constant mu — during
-    a write pulse it MOVES, and that motion is the write energy).
+    'constant' time series (exactly conserved for constant mu).
     """
     mu_of_t = mu if callable(mu) else (lambda t, _m=mu: _m)
     times = np.linspace(t0, t_end, n_samples)
