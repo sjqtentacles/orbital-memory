@@ -51,6 +51,24 @@ def make_cell(state="L4", mu=MU, libration_deg=6.0):
     return [star, planet, particle]
 
 
+def make_cell_3d(state="L4", mu=MU, libration_deg=6.0, inclination_z=0.16):
+    """3D inclined Trojan: the in-plane tadpole of make_cell, plus the particle
+    lifted to height z = inclination_z with zero vertical velocity, so it bobs
+    through the orbital plane once per orbit (vertical epicyclic motion) while
+    slowly librating around L4/L5. Star and planet stay in the z=0 plane."""
+    star, planet = primaries(mu)
+    for b in (star, planet):
+        b["pos"] = b["pos"] + [0.0]
+        b["vel"] = b["vel"] + [0.0]
+    pos, vel = lagrange_state(mu, state)
+    R = _rot(np.radians(libration_deg))
+    pos, vel = R @ pos, R @ vel
+    particle = {"m": 0.0,
+                "pos": [pos[0], pos[1], inclination_z],
+                "vel": [vel[0], vel[1], 0.0]}
+    return [star, planet, particle]
+
+
 def resonant_angle(res, particle=2, planet=1):
     """phi(t) = longitude(particle) - longitude(planet), degrees in (-180,180].
     Barycenter is the origin by construction."""
@@ -103,8 +121,9 @@ def kick(bodies_state, dv, particle=2):
 def state_to_bodies(res, mu=MU):
     """Reconstruct a body list from the final state of a run (for kicks)."""
     n = len(res["masses"])
+    d = res["dim"]
     yf = res["yf"]
-    pos = yf[: 2 * n].reshape(n, 2)
-    vel = yf[2 * n:].reshape(n, 2)
+    pos = yf[: n * d].reshape(n, d)
+    vel = yf[n * d:].reshape(n, d)
     return [{"m": float(res["masses"][i]), "pos": pos[i].tolist(),
              "vel": vel[i].tolist()} for i in range(n)]

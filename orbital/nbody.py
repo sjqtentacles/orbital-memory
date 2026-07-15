@@ -1,6 +1,9 @@
-"""Planar Newtonian N-body integrator for orbital-memory.
+"""Planar OR spatial Newtonian N-body integrator for orbital-memory.
 
-Units: G = 1. State layout: [x1,y1,...,xN,yN, vx1,vy1,...,vxN,vyN].
+Units: G = 1. Dimension d (2 or 3) is inferred from the body positions, so the
+same code runs the flat flip-flop and the inclined 3D Trojan. State layout:
+[pos_0..pos_{N-1}, vel_0..vel_{N-1}] flattened, each vector length d.
+
 Bodies may be massless (true restricted test particles): acceleration never
 divides by a body's own mass, so m = 0 is a valid, well-behaved test particle
 that feels the field but perturbs nothing.
@@ -12,10 +15,18 @@ from scipy.integrate import solve_ivp
 G = 1.0
 
 
-def rhs(t, y, masses, drag=None):
+def _corotation_velocity(pos):
+    """Omega x r for Omega = n z_hat, n = 1 (rigid rotation of the frame)."""
+    v = np.zeros_like(pos)
+    v[0] = -pos[1]
+    v[1] = pos[0]
+    return v  # z-component stays 0
+
+
+def rhs(t, y, masses, dim, drag=None):
     n = len(masses)
-    pos = y[: 2 * n].reshape(n, 2)
-    vel = y[2 * n :].reshape(n, 2)
+    pos = y[: n * dim].reshape(n, dim)
+    vel = y[n * dim :].reshape(n, dim)
     acc = np.zeros_like(pos)
     for i in range(n):
         dr = pos - pos[i]
@@ -23,20 +34,16 @@ def rhs(t, y, masses, drag=None):
         r2[i] = np.inf
         acc[i] = np.sum((G * masses / (r2 * np.sqrt(r2)))[:, None] * dr, axis=0)
     if drag is not None:
-        # weak drag toward corotation (Omega = z_hat, n=1): damps a body's
-        # velocity in the rotating frame, so it relaxes toward a Lagrange point.
-        # Physically the gas-drag / tidal channel that captures Trojans.
         k, idx = drag
         for i in idx:
-            v_rot = vel[i] - np.array([-pos[i, 1], pos[i, 0]])  # v - Omega x r
-            acc[i] -= k * v_rot
+            acc[i] -= k * (vel[i] - _corotation_velocity(pos[i]))
     return np.concatenate([vel.ravel(), acc.ravel()])
 
 
-def total_energy(y, masses):
+def total_energy(y, masses, dim):
     n = len(masses)
-    pos = y[: 2 * n].reshape(n, 2)
-    vel = y[2 * n :].reshape(n, 2)
+    pos = y[: n * dim].reshape(n, dim)
+    vel = y[n * dim :].reshape(n, dim)
     kinetic = 0.5 * np.sum(masses * np.einsum("ij,ij->i", vel, vel))
     potential = 0.0
     for i in range(n):
@@ -49,36 +56,37 @@ def integrate(bodies, t_end, n_samples=2000, rtol=1e-11, atol=1e-12, t0=0.0,
               drag=None):
     """Integrate a list of bodies (dicts with 'm','pos','vel') to t_end.
 
-    drag=(k, [indices]) applies weak corotation drag to those bodies (turns the
-    conservative cell into an attracting one — capture, refresh, relaxation).
+    Positions/velocities may be 2- or 3-vectors (all bodies must agree).
+    drag=(k, [indices]) applies weak corotation drag to those bodies.
 
-    Returns times (n_samples,), trajectories (N, n_samples, 2), velocities,
-    the final full state vector, and relative energy drift.
+    Returns times, trajectories (N, n_samples, d), velocities, the final full
+    state vector, the dimension, and relative energy drift.
     """
     masses = np.array([b["m"] for b in bodies], dtype=float)
+    dim = len(bodies[0]["pos"])
     y0 = np.concatenate(
         [np.array([b["pos"] for b in bodies], float).ravel(),
          np.array([b["vel"] for b in bodies], float).ravel()]
     )
     times = np.linspace(t0, t_end, n_samples)
-    sol = solve_ivp(rhs, (t0, t_end), y0, args=(masses, drag), method="DOP853",
-                    t_eval=times, rtol=rtol, atol=atol)
+    sol = solve_ivp(rhs, (t0, t_end), y0, args=(masses, dim, drag),
+                    method="DOP853", t_eval=times, rtol=rtol, atol=atol)
     if not sol.success:
         raise RuntimeError(f"integration failed: {sol.message}")
     n = len(masses)
-    traj = sol.y[: 2 * n].T.reshape(-1, n, 2).transpose(1, 0, 2)
-    vels = sol.y[2 * n :].T.reshape(-1, n, 2).transpose(1, 0, 2)
-    e0 = total_energy(y0, masses)
-    e1 = total_energy(sol.y[:, -1], masses)
+    traj = sol.y[: n * dim].T.reshape(-1, n, dim).transpose(1, 0, 2)
+    vels = sol.y[n * dim :].T.reshape(-1, n, dim).transpose(1, 0, 2)
+    e0 = total_energy(y0, masses, dim)
+    e1 = total_energy(sol.y[:, -1], masses, dim)
     drift = abs((e1 - e0) / e0) if e0 != 0 else abs(e1 - e0)
     return {"t": times, "traj": traj, "vel": vels, "yf": sol.y[:, -1],
-            "masses": masses, "energy_drift": drift}
+            "masses": masses, "dim": dim, "energy_drift": drift}
 
 
 def longitude(pos, center=(0.0, 0.0)):
-    """True longitude (radians) of pos about center, in (-pi, pi]."""
-    d = np.asarray(pos) - np.asarray(center)
-    return np.arctan2(d[..., 1], d[..., 0])
+    """True longitude (radians) of pos in the xy-plane about center (z ignored)."""
+    p = np.asarray(pos)
+    return np.arctan2(p[..., 1] - center[1], p[..., 0] - center[0])
 
 
 def wrap_pi(a):
