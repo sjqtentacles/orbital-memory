@@ -1,6 +1,8 @@
 # Orbital Memory
 
-**A complete, nonvolatile memory cell made of gravity — write, hold, read, erase — that stores its bit the way Jupiter's Trojans and Saturn's co-orbital moons store theirs.**
+[![tests](https://github.com/sjqtentacles/orbital-memory/actions/workflows/tests.yml/badge.svg)](https://github.com/sjqtentacles/orbital-memory/actions/workflows/tests.yml)
+
+**A nonvolatile memory cell made of gravity — write, cool, hold, read, erase, and a flyby-driven erase head — storing its bit the way Jupiter's Trojans and Saturn's co-orbital moons store theirs.**
 
 Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/slingshot-computing) does *logic* with transient gravitational flybys — and is fundamentally memoryless — this one is the other half of a computer: **storage**. A bit is stored as *which stable island a moonlet orbits in*. Nothing acts but `F = Gm₁m₂/r²` — the one non-gravitational term in the engine is an optional drag switch that exists *solely to prove that dissipation destroys this memory*.
 
@@ -18,8 +20,10 @@ Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/
 |---|---|---|
 | **HOLD** | tadpole libration around L4/L5 | topological protection (invariant island, KAM) |
 | **WRITE** | grow the secondary's mass — the horseshoe pinch | adiabatic capture (Henrard, Neishtadt) |
+| **COOL** | tangential station-keeping burns | co-orbital pendulum damping (and it write-protects) |
 | **READ** | which side the resonant angle librates on | the separatrix-crossing classifier |
-| **ERASE** | any kick past the noise margin | separatrix crossing, `C_J` drops below the held value |
+| **ERASE** | shrink the mass back (release), or any kick past the noise margin | separatrix release / crossing |
+| **GATE** | an aimed massive flyby erases the bit conditionally | logic acting on memory — the capstone |
 
 - librating around **L4** (60° ahead of the secondary) → reads **1**
 - librating around **L5** (60° behind) → reads **0**
@@ -48,6 +52,74 @@ Why it must be this way — three write mechanisms, two of which provably fail:
 3. **A slow parameter change can.** Adiabatic capture needs no aim, only timing — robustness is the adiabatic theorem's gift. The write pulse is `μ(t)`: mass transferred from primary to secondary at fixed total, so the circular kinematics stay exact throughout.
 
 The written bit then **survives an engine swap**: written in the fast rotating-frame integrator, each bit is handed to the full inertial N-body integrator and held for 40 more orbits (test-enforced).
+
+## Cooling: deep bits, and free write-protection
+
+A pinch-written bit librates wide (~±70° — it inherits the horseshoe's phase-space
+area, and adiabatic processes cannot shed area). `orbital/cool.py` shrinks it the way
+real co-orbital missions would: **tangential station-keeping burns**. The tadpole is a
+slow pendulum whose momentum is the radial offset `da = r − 1`; burns at mid-swing,
+each capped at `0.008` (the erase threshold is `0.035`), damp it — **three burns take
+±66° to ~24°**:
+
+<p align="center">
+  <img src="docs/cool.gif" width="440" alt="A wide tadpole tightens around L4 under three flash-marked station-keeping burns, ending as a deep bit that still reads 1">
+</p>
+
+Getting here took three wrong schemes, kept in the module docstring as physics
+documentation (retro-kicks eject through the L1 neck; 'raise C_J' is exactly
+backwards and is impulsive drag; blind prograde kicks fall out the bottom of the
+band). Two lessons survived: **C_J stratifies but does not classify** (a cooled,
+slightly eccentric deep tadpole sits *below* C_L4 while erased orbits sit nearby),
+and — the punchline — **cooling write-protects**: a cooled bit's area is too small
+for the erase pulse to release. Cold storage is locked storage (test-enforced).
+
+## Erase — and the rewrite wall
+
+Shrinking μ back to blank (the write pulse reversed) **releases** the bit into a
+bounded, bit-less horseshoe. Erase works. Rewriting after it does not — and that
+negative result is measured, pinned by tests, and worth more than a demo:
+
+<p align="center">
+  <img src="docs/erase.gif" width="440" alt="A stored bit is released by the shrinking secondary into a visibly wider horseshoe sweeping the whole ring">
+</p>
+
+- **Release inflates the medium**: captured at `da = 0.030`, released at `~0.07`
+  (the separatrix-crossing invariant jump).
+- **Recapture has a ceiling**: the tadpole band can never outrun the Hill radius
+  (`W/r_H = 2.35 μ^(1/6) < 1` across the whole range), so offsets beyond `~0.045`
+  cannot be re-pinched by *any* μ pulse. Every scanned second-write delay reads
+  erased.
+- **Every fix fails**: burns that cool a tadpole *pump* a horseshoe (the L3
+  separatrix layer is sticky), drag destabilizes outright, and a 3×-slower
+  "gentler" erase leaves the moonlet lingering in the separatrix layer until it is
+  **ejected entirely**.
+
+At this design point the cell is **write-once / erase-once**: erasing the bit
+trashes the medium beyond recapture — an erasure-cost statement with a distinctly
+Landauer flavor. A rewritable cell needs a release channel that beats the
+inflation; that is the roadmap's open problem.
+
+## The capstone: logic acts on memory
+
+The unification of the two projects. slingshot-computing's mechanism — an aimed
+flyby, its launch direction root-found on the full simulation — pointed at this
+project's stored bit. A massive bullet (`m = 2e-4`) on a fast hyperbolic pass is
+aimed to shave the moonlet at closest approach `0.002`:
+
+<p align="center">
+  <img src="docs/gate.gif" width="640" alt="Two synchronized lanes: with the bullet the moonlet is flung off its island and reads ERASED; without it the bit keeps librating">
+</p>
+
+**Bullet present → bit erased. Bullet absent → bit survives. A graze at 25× the
+distance → bit survives** (locality: the datum a dual-rail *write* head would build
+on). The bullet's presence is a logic input; the stored bit is the register.
+
+Two findings run the implementation: the **guiding center stores the bit, and only
+tangential impulse moves it** (a radial pass at miss 0.004 pumps a monster epicycle
+yet leaves the bit readable; erasure needs the deep pass where the tangential share
+beats the threshold), and a massive intruder **drags the system barycenter**, so
+readout uses a COM-corrected resonant angle — a test proves the correction matters.
 
 ## The energy landscape
 
@@ -84,7 +156,7 @@ python -m pytest                 # 51-test suite
 
 ## Tests (TDD, physics-validated)
 
-51 tests check the simulation against closed-form theory, not just against itself:
+100 tests check the simulation against closed-form theory, not just against itself:
 
 - **Kepler** — a moon on a circular orbit stays circular and obeys Kepler's third law.
 - **Conservation** — energy `<1e-9` and momentum in 2D & 3D; barycenter pinned; the massless moonlet exerts no back-reaction; time-reversal retraces.
@@ -92,15 +164,20 @@ python -m pytest                 # 51-test suite
 - **Jacobi constant** — conserved along held *and* erased orbits; held bit sits at analytic `C_L4`; erasing kicks provably lower `C_J`.
 - **Rotating engine** — matches the inertial integrator trajectory-for-trajectory; blank medium circulates at the theoretical drift rate.
 - **WRITE** — same blank + same pulse, timing alone selects the bit; both bits write correctly, deterministically, and survive a 40-orbit hold after an engine swap to the full N-body integrator.
-- **Memory** — holds 80 (and 300, slow-marked) orbits with no secular drift; sub-threshold kicks preserve, super-threshold erase; the separatrix-crossing reader classifies tadpole/horseshoe/circulation physically.
+- **Memory** — holds 80 (and 300, slow-marked) orbits with no secular drift; sub-threshold kicks preserve, super-threshold erase (the named `ERASE_KICK` tested on both sides); the separatrix-crossing reader classifies tadpole/horseshoe/circulation physically, wide tadpoles included; drag destabilization is a committed test, not an anecdote.
+- **COOL** — three burns shrink ±66°→<35° with the value preserved; burns bounded ≪ threshold; cooled bits survive the honest engine; deterministic.
+- **ERASE / the wall** — release restores a bounded blank at a pinned inflated offset; the recapture ceiling asserted analytically; no scanned delay recaptures (slow); slower erase ejects (slow); the erase pulse cannot release a cooled bit (write-protection, slow).
+- **GATE** — aim converges to the requested miss; present erases / absent survives / 25× graze survives; the cell hardware rides out the shot; COM-corrected readout provably differs from the naive one; close-encounter numerics bounded explicitly.
 
 ## Layout
 
 ```
-orbital/    nbody.py (2D/3D inertial integrator) · rotating.py (co-rotating frame, μ(t))
-            memory.py (cell, reader, kicks) · write.py (the pinch write) · theory.py (C_J, L-points)
-demos/      flipflop_demo · write_demo · landscape · flipflop_3d · make_gifs
-tests/      test_nbody · test_memory · test_theory · test_rotating · test_write   (51 tests)
+orbital/    nbody.py (2D/3D inertial) · rotating.py (co-rotating frame, μ(t), schedules)
+            memory.py (cell, reader, kicks) · write.py (the pinch) · cool.py (burns)
+            rewrite.py (erase + the wall) · gate.py (the bullet) · theory.py (C_J, L-points)
+demos/      flipflop_demo · write_demo · cool_demo · rewrite_demo · gate_demo
+            landscape · flipflop_3d · make_gifs · style.py (shared visual system)
+tests/      100 tests: physics invariants, every operation, every pinned finding
 docs/       all figures and GIFs above
 ```
 
@@ -118,14 +195,16 @@ docs/       all figures and GIFs above
 ## Roadmap
 
 - [x] A bit that holds: L4/L5 tadpole memory (80–300 orbits, no drift)
-- [x] Noise margin: separatrix threshold ~3.5% of orbital speed, restated in `C_J`
-- [x] 3D: dimension-agnostic integrator + inclined-Trojan bit
-- [x] Finding: memory is topological, not dissipative (drag destabilizes L4/L5)
+- [x] Noise margin: `ERASE_KICK` = 3.5% of orbital speed, tested both sides
+- [x] 3D: dimension-agnostic integrator + inclined-Trojan bit (full 3D Jacobi integral)
+- [x] Finding: memory is topological, not dissipative (drag destabilizes L4/L5 — tested)
 - [x] **WRITE: adiabatic horseshoe pinch — bit selected by pulse timing alone**
-- [x] Rotating-frame engine with time-dependent μ (write pulses)
-- [x] Jacobi-constant theory module; 51-test physics-validated suite
-- [ ] Re-writable cell: erase back to blank (shrink μ) and write again
-- [ ] Bit cooling: shrink a written tadpole's libration (non-adiabatic pulse shaping)
+- [x] **COOL: station-keeping burns (±66°→24°) — and cooling write-protects**
+- [x] **ERASE: μ-release restores a blank; finding: the REWRITE WALL (write-once memory)**
+- [x] **GATE: conditional erase by aimed flyby — logic acts on memory (the capstone)**
+- [x] CI; 100-test physics-validated suite; findings pinned as tests
+- [ ] Dual-rail write head: two moonlets, a routed bullet erases one — the surviving rail IS the written bit (locality datum already tested)
+- [ ] A release channel that beats the erase-inflation (true rewritability)
 - [ ] Averaged 1-DOF Hamiltonian: closed-form noise margin & write windows
 - [ ] A register: several cells at different radii; crosstalk vs spacing
 - [ ] Symplectic integrator for astronomical-timescale retention
