@@ -14,12 +14,14 @@ Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/
 
 ## The idea
 
-In the circular restricted three-body problem — a heavy **star**, a **planet**, and a massless **test particle** — there are two triangular equilibrium points, **L4** (60° ahead of the planet) and **L5** (60° behind). A particle near one of them doesn't fall in or drift away; it *librates* in a stable "tadpole" orbit around it. The two islands are separated by a **separatrix**, so a small nudge can't move the particle from one to the other.
+In the circular restricted three-body problem — a heavy **primary**, a **secondary**, and a massless **test body** — there are two triangular equilibrium points, **L4** (60° ahead of the secondary) and **L5** (60° behind). A body near one of them doesn't fall in or drift away; it *librates* in a stable "tadpole" orbit around it. The two islands are separated by a **separatrix**, so a small nudge can't move the body from one to the other.
 
 That's a bit:
 
 - librating around **L4** → reads **1**
 - librating around **L5** → reads **0**
+
+**This is moon-scale hardware, not a toy.** Saturn's little moons **Telesto** and **Calypso** ride in the L4/L5 points of **Tethys**, and **Helene** and **Polydeuces** in those of **Dione** — real co-orbital moons that *are* this exact cell, holding their "bit" over the age of the solar system. The dynamics depend only on the mass ratio `μ`, so the same code covers star+planet, planet+moon, and moon+co-orbital-moonlet; only the libration timescale (`~1/√μ`) changes.
 
 <p align="center">
   <img src="docs/flipflop_2d.gif" width="440" alt="Rotating frame: a particle librates at L4 (holding bit = 1), then a kick pushes it across the separatrix and it circulates away (erased)">
@@ -59,13 +61,34 @@ pip install -r requirements.txt
 python -m demos.flipflop_demo   # HOLD + NOISE MARGIN, writes out/flipflop.{png,json}
 python -m demos.flipflop_3d     # inclined Trojan, writes docs/orbital_3d.gif
 python -m demos.make_gifs       # the 2D hold->erase gif
+python -m pytest                # 29-test suite
 ```
+
+## Tests
+
+A TDD suite (`python -m pytest`, 29 tests) checks the integrator against
+closed-form physics, not just against itself:
+
+- **Kepler** — a light moon on a circular orbit stays circular and obeys
+  Kepler's third law (period = `2π√(a³/GM)`).
+- **Conservation** — energy (`< 1e-9`) and momentum in 2D and 3D; the
+  barycenter stays pinned at the origin (the readout depends on it).
+- **Lagrange theory** — L4/L5 form an exact equilateral triangle and are true
+  equilibria; the measured tadpole libration period matches
+  `2π/√(27/4·μ)` to within a few percent; the bit holds across mass ratios.
+- **Memory** — both states read correctly and hold for 80 (and, slow, 300)
+  orbits without secular drift; sub-threshold kicks preserve the bit and
+  super-threshold kicks erase it; the 3D cell holds its bit while bobbing out
+  of plane; a 2-vector kick on a 3D cell leaves `vz` intact (regression).
+- **Determinism & 2D/3D consistency** — repeatable runs; a 3D run with `z=0`
+  reproduces the 2D run exactly.
 
 ## Layout
 
 ```
 orbital/    nbody.py (2D/3D integrator, G=1) · memory.py (L4/L5 cell, readout, kicks)
 demos/      flipflop_demo.py · flipflop_3d.py · make_gifs.py
+tests/      test_nbody.py · test_memory.py  (29 tests, physics-validated)
 docs/       the figures and GIFs above
 ```
 
@@ -96,6 +119,7 @@ docs/       the figures and GIFs above
 - [x] Noise margin: the separatrix threshold (~3.5% of orbital speed)
 - [x] 3D: dimension-agnostic integrator + inclined-Trojan visualization
 - [x] Finding: the memory is topological, not dissipative (drag destabilizes L4/L5)
+- [x] TDD suite (29 tests) validating the integrator against closed-form physics
 - [ ] Write: adiabatic resonance capture (migration-driven), not drag
 - [ ] Theory pass: averaged Trojan Hamiltonian → closed-form noise margin & retention
 - [ ] A multi-cell "byte"; the inclination bob as an analog sub-register

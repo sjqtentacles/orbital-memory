@@ -1,23 +1,36 @@
-"""A gravitational memory bit: which Lagrange island a test particle librates in.
+"""A gravitational memory bit: which Lagrange island a body librates in.
 
 Circular restricted three-body problem (G=1, total mass 1, separation 1, mean
-motion n=1, period 2*pi). A heavy star and a planet orbit their barycenter;
-a massless test particle sits in a tadpole orbit around the leading (L4) or
-trailing (L5) triangular Lagrange point. Those two islands are separated by a
-separatrix (the horseshoe region around L3), so a small perturbation can't move
-the particle between them — the island it librates in is a nonvolatile bit.
+motion n=1, period 2*pi). A heavy primary and a secondary orbit their
+barycenter; a massless test body sits in a tadpole orbit around the leading
+(L4) or trailing (L5) triangular Lagrange point. Those two islands are
+separated by a separatrix (the horseshoe region around L3), so a small
+perturbation can't move the body between them — the island it librates in is a
+nonvolatile bit.
 
-Encoding: librating around L4 (+60 deg ahead of the planet) = '1';
-librating around L5 (-60 deg, trailing) = '0'; a horseshoe that wraps past L3,
-or an escape, = an erased/invalid cell.
+This is a moon-scale mechanism, not just a toy: Saturn's moons Telesto and
+Calypso sit in the L4/L5 points of Tethys, and Helene/Polydeuces in those of
+Dione. Those co-orbital moons are exactly this cell — real hardware that has
+held its "bit" for the age of the solar system. The dynamics depend only on
+the mass ratio `mu`, so the same code covers star+planet, planet+moon, and
+moon+co-orbital-moonlet; only the libration timescale (~1/sqrt(mu)) changes.
+
+Encoding: librating around L4 (+60 deg ahead of the secondary) = '1';
+around L5 (-60 deg, trailing) = '0'; a horseshoe past L3 or an escape = erased.
 """
 
 import numpy as np
 
 from . import nbody
 
-MU = 0.003          # planet mass fraction (< 0.0385 -> L4/L5 linearly stable)
-PERIOD = 2 * np.pi  # planet orbital period
+MU = 0.003          # secondary mass fraction (< 0.0385 -> L4/L5 linearly stable)
+PERIOD = 2 * np.pi  # orbital period of the primary pair
+
+# A few real co-orbital mass ratios (secondary / total), for reference and
+# for parameterizing the cell at moon scale. Libration slows as ~1/sqrt(mu).
+MU_SUN_JUPITER = 9.54e-4       # the classic Jupiter Trojans
+MU_SATURN_TETHYS = 1.09e-6     # Telesto & Calypso ride Tethys's L4/L5
+MU_SATURN_DIONE = 1.85e-6      # Helene & Polydeuces ride Dione's L4/L5
 
 
 def _rot(theta):
@@ -109,13 +122,23 @@ def hold(state="L4", periods=40, mu=MU, libration_deg=6.0, n_per_period=60):
 
 
 def kick(bodies_state, dv, particle=2):
-    """Return a new body list with the particle's velocity kicked by dv=(dvx,dvy).
-    `bodies_state` is a list of dicts (e.g. from split_run's checkpoint)."""
+    """Return a new body list with the particle's velocity kicked by dv.
+
+    Dimension-safe: dv may be shorter than the velocity (a 2-vector dv applied
+    to a 3D cell leaves vz untouched); extra dv components are ignored.
+    """
     out = [dict(b) for b in bodies_state]
     v = list(out[particle]["vel"])
-    out[particle] = dict(out[particle],
-                         vel=[v[0] + dv[0], v[1] + dv[1]])
+    v = [v[i] + (dv[i] if i < len(dv) else 0.0) for i in range(len(v))]
+    out[particle] = dict(out[particle], vel=v)
     return out
+
+
+def libration_period(mu=MU):
+    """Analytic tadpole (long-period) libration period around L4/L5 for small
+    mu: T = 2*pi / sqrt(27/4 * mu), in the same time units (planet period 2*pi).
+    Used to validate the simulation against linearized Trojan theory."""
+    return 2 * np.pi / np.sqrt(27.0 / 4.0 * mu)
 
 
 def state_to_bodies(res, mu=MU):
