@@ -45,7 +45,16 @@ python -m demos.flipflop_demo
 
 ## The physics finding
 
-The memory is protected **topologically, not dissipatively.** L4/L5 are *maxima* of the effective potential — they're stable only because of the velocity-dependent Coriolis force. Add friction and you kill that stabilization: **drag destabilizes the Lagrange points** (verified in code). So there's no attractor pulling the bit back to a clean value; instead the bit is held by the *geometry of phase space* — an invariant island bounded by a separatrix, the KAM / Nekhoroshev way. Refresh isn't damping; it's the topology.
+The memory is protected **topologically, not dissipatively.** L4/L5 are extrema of the effective potential, stable only because of the velocity-dependent Coriolis force. Add friction and you kill that stabilization: **drag destabilizes the Lagrange points** (verified in code). So there's no attractor pulling the bit back to a clean value; instead the bit is held by the *geometry of phase space* — an invariant island bounded by a separatrix, the KAM / Nekhoroshev way. Refresh isn't damping; it's the topology.
+
+### The conserved quantity
+
+The rigorous backbone is the **Jacobi constant** `C_J` — the rotating-frame analogue of energy, and the one conserved quantity of this problem. `orbital/theory.py` computes it, and the test suite pins the memory to it:
+
+- a **held** bit sits at `C_J ≈ C_L4 = 3 − μ(1−μ)` (the exact triangular value; sim matches to ~1e-4) and conserves it to **~1e-12**;
+- **writing energy** into the cell (a kick) *lowers* `C_J`; push it past the separatrix and the tadpole becomes a horseshoe — the bit erases.
+
+So the noise margin isn't just an empirical 3.5% — it's a statement about `C_J` crossing the separatrix value, and it's tested as such.
 
 A consequence: **writing** (flipping 0↔1) is genuinely subtle — you can't just drag a particle into the island, because drag repels it. Real Trojan capture happens through slow orbital migration and adiabatic resonance capture (Henrard, Neishtadt). That's the honest frontier of this project, and the natural place for a proper Hamiltonian-theory pass.
 
@@ -61,12 +70,12 @@ pip install -r requirements.txt
 python -m demos.flipflop_demo   # HOLD + NOISE MARGIN, writes out/flipflop.{png,json}
 python -m demos.flipflop_3d     # inclined Trojan, writes docs/orbital_3d.gif
 python -m demos.make_gifs       # the 2D hold->erase gif
-python -m pytest                # 29-test suite
+python -m pytest                # 37-test suite
 ```
 
 ## Tests
 
-A TDD suite (`python -m pytest`, 29 tests) checks the integrator against
+A TDD suite (`python -m pytest`, 37 tests) checks the integrator against
 closed-form physics, not just against itself:
 
 - **Kepler** — a light moon on a circular orbit stays circular and obeys
@@ -76,6 +85,9 @@ closed-form physics, not just against itself:
 - **Lagrange theory** — L4/L5 form an exact equilateral triangle and are true
   equilibria; the measured tadpole libration period matches
   `2π/√(27/4·μ)` to within a few percent; the bit holds across mass ratios.
+- **Jacobi constant** — conserved to `< 1e-9` along held and erased orbits; a
+  held bit matches the analytic `C_L4 = 3 − μ(1−μ)`; L4 and L5 share it; and a
+  bit-erasing kick provably lowers `C_J` below the held value.
 - **Memory** — both states read correctly and hold for 80 (and, slow, 300)
   orbits without secular drift; sub-threshold kicks preserve the bit and
   super-threshold kicks erase it; the 3D cell holds its bit while bobbing out
@@ -88,7 +100,7 @@ closed-form physics, not just against itself:
 ```
 orbital/    nbody.py (2D/3D integrator, G=1) · memory.py (L4/L5 cell, readout, kicks)
 demos/      flipflop_demo.py · flipflop_3d.py · make_gifs.py
-tests/      test_nbody.py · test_memory.py  (29 tests, physics-validated)
+tests/      test_nbody.py · test_memory.py · test_theory.py  (37 tests, physics-validated)
 docs/       the figures and GIFs above
 ```
 
@@ -119,7 +131,7 @@ docs/       the figures and GIFs above
 - [x] Noise margin: the separatrix threshold (~3.5% of orbital speed)
 - [x] 3D: dimension-agnostic integrator + inclined-Trojan visualization
 - [x] Finding: the memory is topological, not dissipative (drag destabilizes L4/L5)
-- [x] TDD suite (29 tests) validating the integrator against closed-form physics
+- [x] TDD suite (37 tests) validating the integrator against closed-form physics
 - [ ] Write: adiabatic resonance capture (migration-driven), not drag
 - [ ] Theory pass: averaged Trojan Hamiltonian → closed-form noise margin & retention
 - [ ] A multi-cell "byte"; the inclination bob as an analog sub-register

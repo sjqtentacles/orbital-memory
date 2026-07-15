@@ -22,7 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from orbital import memory, nbody
+from orbital import memory, nbody, theory
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "out"
 
@@ -69,8 +69,12 @@ def main():
         phi = res["phi"]
         label, center, amp = memory.classify(phi)
         holds[st] = res
+        cj = theory.jacobi_of(res)
         print(f"  {st}: librates around {center:+5.1f} deg (amp {amp:.1f}), "
               f"reads {label!r} for 80 orbits, drift {res['energy_drift']:.1e}")
+        print(f"      Jacobi constant C_J = {cj.mean():.6f} "
+              f"(conserved to {cj.max() - cj.min():.0e}; analytic C_L4 = "
+              f"{theory.C_L4():.6f})")
         payload[st] = {
             "t": res["t"].tolist(),
             "phi": np.round(phi, 3).tolist(),
