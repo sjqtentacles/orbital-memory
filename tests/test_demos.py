@@ -13,7 +13,8 @@ import pytest
 
 DEMOS = ["flipflop_demo", "flipflop_3d", "landscape", "make_gifs",
          "cool_demo", "gate_demo", "validation", "phase_portrait",
-         "stability_map", "insert_demo", "swarm", "saturn_erosion", "style"]
+         "stability_map", "insert_demo", "swarm", "saturn_erosion",
+         "hamiltonian", "retention", "register", "style"]
 
 
 @pytest.mark.parametrize("name", DEMOS)
@@ -24,15 +25,17 @@ def test_demo_imports(name):
 
 def test_demo_entry_points_exist():
     from demos import (cool_demo, flipflop_3d, flipflop_demo, gate_demo,
-                       insert_demo, landscape, make_gifs, phase_portrait,
-                       saturn_erosion, stability_map, swarm, validation)
+                       hamiltonian, insert_demo, landscape, make_gifs,
+                       phase_portrait, register, retention, saturn_erosion,
+                       stability_map, swarm, validation)
     assert callable(flipflop_demo.main)
     assert callable(flipflop_demo.noise_margin)
     assert callable(flipflop_3d.main)
     assert callable(make_gifs.main)
     assert callable(landscape.landscape) and callable(landscape.anatomy)
     for mod in (cool_demo, gate_demo, validation, phase_portrait,
-                stability_map, insert_demo, swarm, saturn_erosion):
+                stability_map, insert_demo, swarm, saturn_erosion,
+                hamiltonian, retention, register):
         assert callable(mod.main)
 
 

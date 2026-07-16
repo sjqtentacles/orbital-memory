@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/sjqtentacles/orbital-memory/actions/workflows/tests.yml/badge.svg)](https://github.com/sjqtentacles/orbital-memory/actions/workflows/tests.yml)
 
-**A nonvolatile memory cell made of gravity — written by orbit insertion, held by nothing but `F = Gm₁m₂/r²`, read by watching an angle, and rewritten by a real gravitational flyby — storing its bit the way Jupiter's ~13,000 Trojan asteroids store theirs.** No fake actuators: every operation maps to something that actually happens in space, and the simulation is validated against the real sky.
+**A long-lived (but metastable) memory cell made of gravity — written by orbit insertion, held by nothing but `F = Gm₁m₂/r²`, read by watching an angle, and rewritten by a real gravitational flyby — storing its bit the way Jupiter's ~13,000 Trojan asteroids store theirs.** No fake actuators: every operation maps to something that actually happens in space, the noise margin and libration period now come from a closed-form Hamiltonian, and the simulation is validated against the real sky.
 
 Where its sibling project [slingshot-computing](https://github.com/sjqtentacles/slingshot-computing) does *logic* with transient gravitational flybys — and is fundamentally memoryless — this one is the other half of a computer: **storage**. A bit is stored as *which stable island a body librates in* — L4 (leading) or L5 (trailing).
 
@@ -21,7 +21,7 @@ An earlier version of this project wrote and erased bits by *growing and shrinki
 | Operation | Realistic mechanism | Real-world analog |
 |---|---|---|
 | **WRITE** | orbit **insertion** — deliver the body, one insertion burn (Δv) drops it onto the tadpole | stationing a spacecraft at L4/L5; natural Trojan capture |
-| **HOLD** | pure gravity, no forces added | Jupiter's Trojans, held for ~4 Gyr |
+| **HOLD** | pure gravity, no forces added | deep bits ~Gyr; typical Trojans metastable, 10 kyr–100 Myr |
 | **READ** | measure the libration angle | astrometry |
 | **COOL** | **station-keeping** burns, a few m/s of Δv | how real co-orbital spacecraft would hold station |
 | **REWRITE** | **erase by flyby, then re-insert** — both halves real | co-orbitals really are scattered and re-injected by encounters |
@@ -122,6 +122,36 @@ The triangular points are linearly stable only for `μ < 0.0385` (the Gascheau/R
   <img src="docs/stability.png" width="640" alt="Stability map in mass ratio vs libration amplitude: a green stable region up to the Routh limit, red beyond, with Jupiter/Earth/Saturn co-orbitals marked deep in the stable zone">
 </p>
 
+## The analytic backbone — deriving what we measure
+
+Averaging the restricted problem over the fast orbital period reduces the tadpole to a single degree of freedom: the guiding center in the resonant angle `φ`, in an effective potential set by one shape, `f(φ) = cos φ − 1/(2 sin(φ/2))` (`orbital/hamiltonian.py`). It has equilibria exactly at L4/L5 (60°) and L3 (180°, the separatrix), an L4→L3 barrier of exactly `3μ`, and `f''(60°) = −9/4` — giving the small-amplitude frequency `ω² = (27/4)μ`. From it, closed forms fall out and are **checked against the full n-body sim, not fit to it**:
+
+- **Libration period** vs amplitude — matches the simulated period to **~1.5% across the whole tadpole range** (2°→60°).
+- **Separatrix amplitude ≈ 78°** (mass-ratio-independent) — the widest tadpole before it becomes a horseshoe.
+- **Noise margin** — the tangential Δv that lifts a bit over the L3 barrier *derives* the empirical `ERASE_KICK = 0.035` to leading order (analytic 0.045; the sim erases ~30% easier via conjunction-side encounters the averaging can't see — a real, documented limit).
+
+<p align="center">
+  <img src="docs/hamiltonian.png" width="620" alt="Analytic libration period vs amplitude overlaid on the measured n-body periods, agreeing across the tadpole range, with the separatrix marked">
+</p>
+
+The sim, in other words, is now the *verifier* of a theory rather than the design tool.
+
+## How long does a bit last?
+
+Not forever — and the datasheet says so. Deep, low-amplitude bits are Nekhoroshev-stable, censored survivors of any feasible integration; as the amplitude climbs toward the L3 separatrix the escape time collapses. Real Jupiter Trojans are metastable at 10 kyr–100 Myr (Greenstreet et al. 2024). Only the escape band is integrated; the deep regime's far-longer lifetime is labeled theory, never a Myr number we didn't run:
+
+<p align="center">
+  <img src="docs/retention.png" width="640" alt="Escape time vs libration amplitude: censored survivors below the separatrix, steeply falling escape time as amplitude approaches the analytic 78-degree separatrix">
+</p>
+
+## A register: more than one bit
+
+A single planet has one L4/L5, so N bits need N hosts — exactly like Saturn's moons, each with its own co-orbital Trojan. A central star carries several light secondaries at spaced radii; each secondary's Trojan is a bit (L4 = 1, L5 = 0). A **nibble round-trips** (`write "1101" → read "1101"`), read in the honest inertial engine. Capacity is bounded by mutual (Hill) stability — pack the hosts closer than ~1.7× and the register goes chaotic; wider, and crosstalk is a few degrees:
+
+<p align="center">
+  <img src="docs/register.png" width="560" alt="Four concentric host rings around a star, each carrying a Trojan at L4 (cyan, 1) or L5 (pink, 0), spelling the nibble 1101 that reads back correctly">
+</p>
+
 ## The energy landscape
 
 <p align="center">
@@ -155,15 +185,18 @@ python -m demos.stability_map    # where a bit survives (Routh limit + real obje
 python -m demos.gate_demo        # conditional erase by aimed flyby
 python -m demos.cool_demo        # station-keeping burns tighten a bit
 python -m demos.saturn_erosion   # Saturn pumping the Trojan (the onset)
+python -m demos.hamiltonian      # the analytic backbone: theory vs measured
+python -m demos.retention        # how long a bit lasts vs amplitude
+python -m demos.register         # a nibble in four co-orbital cells
 python -m demos.landscape        # the energy-landscape & anatomy figures
 python -m demos.flipflop_3d      # the inclined-Trojan 3D gif
 python -m demos.make_gifs        # the 2D hold->erase gif
-python -m pytest                 # 121-test suite
+python -m pytest                 # 161-test suite
 ```
 
 ## Tests (TDD, physics-validated)
 
-**121 tests** check the simulation against closed-form theory *and against real observations*, not just against itself:
+**161 tests** check the simulation against closed-form theory *and against real observations*, not just against itself:
 
 - **Validation against the sky** — at the real Sun–Jupiter ratio the simulated libration period converts to **~148 years** (the observed Trojan value), matches linear theory, and the bit is stable with no secular drift; the Earth-Trojan case is documented as the honest harder case (linear theory underestimates 2010 TK7's large-amplitude libration).
 - **Real units** — `orbital/units.py` reproduces Jupiter's 11.86-yr period and 13.06 km/s orbital speed; round-trip conversions exact.
@@ -174,6 +207,9 @@ python -m pytest                 # 121-test suite
 - **COOL** — burns shrink a wide bit below target with the value preserved; bounded ≪ threshold; survives the honest engine; deterministic.
 - **Eccentric** — reduces to circular at e=0; the bit survives real Jupiter eccentricity at L4 and L5; separation breathes exactly `1 ± e` at the orbital frequency.
 - **Saturn perturber** (slow) — Saturn measurably pumps the Trojan vs a Saturn-free control (relative, platform-invariant).
+- **Analytic backbone** — the averaged Hamiltonian's period matches the sim to ~1.5% across amplitudes; the separatrix (~78°) brackets the sim's tadpole→horseshoe transition; the derived noise margin lands within ~30% of the measured `ERASE_KICK`.
+- **Retention** — a deep bit is a censored survivor; near-separatrix bits escape sooner as amplitude rises (in the escape-observable band).
+- **Register** — a nibble round-trips (`write→read`); too-close hosts go chaotic while safe spacing stays low-crosstalk; momentum is zeroed and geometry is exact.
 - **Memory reader** — the separatrix-crossing classifier handles tadpole/horseshoe/circulation physically, wide tadpoles included; drag destabilization is a committed test.
 
 ## Layout
@@ -182,24 +218,27 @@ python -m pytest                 # 121-test suite
 orbital/    nbody.py (2D/3D inertial) · rotating.py (co-rotating frame, analysis)
             memory.py (cell, reader, kicks, eccentric, Saturn) · units.py (real units)
             write.py (orbit insertion) · cool.py (station-keeping) · gate.py (flyby + rewrite)
+            hamiltonian.py (averaged 1-DOF) · retention.py (lifetimes) · register.py (multi-bit)
             theory.py (C_J, Lagrange points)
-demos/      validation · insert_demo · swarm · phase_portrait · stability_map
-            gate_demo · cool_demo · saturn_erosion · landscape · flipflop_3d
-            make_gifs · flipflop_demo · style.py (shared visual system)
-tests/      121 tests: real-sky validation, physics invariants, every operation
+demos/      validation · insert_demo · swarm · phase_portrait · stability_map · hamiltonian
+            retention · register · gate_demo · cool_demo · saturn_erosion · landscape
+            flipflop_3d · make_gifs · flipflop_demo · style.py (shared visual system)
+tests/      161 tests: real-sky validation, physics invariants, every operation
 docs/       all figures and GIFs above
 ```
 
 ## Physics & numerics
 
 - Circular restricted three-body problem, canonical units (`G = 1`, total mass 1, separation 1, mean motion `n = 1`); a thin units layer rescales to real kg / AU / years / m·s⁻¹. Cell mass ratio `μ = 0.003` for the fast demos (< 0.0385 Gascheau/Routh limit); validation runs at the real `μ = 9.54e-4`.
-- Adaptive high-order Runge–Kutta (scipy `DOP853`), no softening; Jacobi drift ~`1e-12` on held cells. A symplectic integrator (e.g. REBOUND's WHFast) is the right upgrade for true Gyr-scale retention claims.
+- Adaptive high-order Runge–Kutta (scipy `DOP853`), no softening; Jacobi drift ~`1e-12` on held cells. Retention numbers are integrated where feasible and theory-extrapolated (Nekhoroshev) beyond, labeled as such; a symplectic integrator (e.g. REBOUND's WHFast) is the right upgrade for genuine Myr–Gyr retention runs.
 
 ## Honest caveats & prior art
 
-- Every mechanism here is textbook celestial mechanics: triangular Lagrange stability (Gascheau/Routh), tadpole/horseshoe co-orbitals (Janus & Epimetheus), the elliptic-restricted equilateral solution, Jacobi integral and zero-velocity curves, orbit insertion, gravitational scattering. What is unclaimed is the *construction*: engineering these into a memory cell with an insertion write, a station-keeping cool, a flyby rewrite, a noise margin, and a real-units validation. The novelty is the artifact, not the mechanism.
-- Nobody will build this out of asteroids — it is a simulation, validated against real dynamics, not a device. The write actuator (an insertion burn) and rewrite (an aimed flyby) are physically real but wildly impractical to deploy at solar-system scale. That's the whole conceit, stated plainly.
-- Turing-completeness is not claimed. This is a memory element; pairing it with slingshot-computing's flyby gates (flyby = logic, orbit = storage) is the longer arc.
+- **This memory is metastable, not eternal.** Deep, low-amplitude bits are Nekhoroshev-stable (exponentially long-lived), but real Jupiter Trojans are captured and scattered out on 10 kyr–100 Myr timescales (Greenstreet et al., *"Jupiter's Metastable Companions"*, ApJL 2024; Karlsson, A&A 2004: tadpole→horseshoe→ejection). "Long-lived," not "non-volatile."
+- **Computing with gravity is an established field, and this project's *logic* framing has direct ancestors.** The flyby gate (in the sibling repo) is a gravitational instance of the Fredkin–Toffoli billiard-ball computer (Fredkin & Toffoli, *Conservative Logic*, 1982) — and **Svozil 2007** (arXiv:physics/0703031) already drew a Fredkin gate from attractive 1/r potentials. Newtonian *n*-body dynamics is known to embed universal computation (Warren Smith 2006; Moore 1990; Yao, JACM 2003), resting on non-collision singularities (Xia 1988/1992). Caveat: that universality lives in the Newtonian point-mass idealization — relativistic constraints (speed capped at *c*) restore ordinary Turing-simulability (Smith 2006), so "gravity hypercomputes" is an idealization artifact, not a physical claim.
+- **What appears genuinely novel** (medium confidence — absence of prior art is hard to prove): storing a bit in *which* triangular point (L4 vs L5) a body librates in — a librational/resonance-state memory — and the conditional-erase-by-flyby. Surveyed prior art encodes bits as presence/absence of a moving ball or trajectory topology; none store information in libration state. This is a small step toward Yao's open problem (a *realistic finite-size* gravitational computer).
+- The physics is textbook (triangular Lagrange stability — Gascheau/Routh; tadpole/horseshoe co-orbitals — Janus & Epimetheus; the elliptic-restricted equilateral solution; Jacobi integral; the averaged co-orbital Hamiltonian — Nesvorný et al. 2002, Murray & Dermott; observed Trojan libration T₂ = 147.8 yr — Érdi, MNRAS 384:1165). The novelty is the *construction* — a memory cell with an insertion write, a station-keeping cool, a flyby rewrite, a closed-form noise margin, a register, and a real-sky validation.
+- Nobody will build this out of asteroids — it is a simulation, validated against real dynamics, not a device. That's the whole conceit, stated plainly.
 
 ## Roadmap
 
@@ -214,9 +253,11 @@ docs/       all figures and GIFs above
 - [x] **GATE: conditional erase by aimed flyby — logic acts on memory (the capstone)**
 - [x] **Eccentric (elliptic restricted) orbits — a breathing bit survives real Jupiter eccentricity**
 - [x] **Real Saturn perturber — the onset of swarm erosion**
-- [x] CI; 121-test physics-and-observation-validated suite; findings pinned as tests
+- [x] **Averaged 1-DOF Hamiltonian — closed-form period, separatrix & noise margin (derives `ERASE_KICK`), matched to the sim**
+- [x] **Retention datasheet — bit lifetime vs amplitude, honest metastable framing (integrated + Nekhoroshev-extrapolated)**
+- [x] **A register — several co-orbital cells at spaced radii; a nibble round-trips, crosstalk vs spacing (capacity is stability-bounded)**
+- [x] **Prior-art truth: cite Svozil/Smith/Yao/Xia (logic) and Greenstreet/Karlsson/Érdi (physics); metastable, not "non-volatile"**
+- [x] CI; physics-and-observation-validated suite; findings pinned as tests
 - [ ] Dual-rail write head: two moonlets, a routed bullet erases one — the surviving rail IS the written bit (locality datum already tested)
-- [ ] Averaged 1-DOF Hamiltonian: closed-form noise margin & write windows
-- [ ] A register: several cells at different radii; crosstalk vs spacing
-- [ ] Symplectic integrator (REBOUND/WHFast) for astronomical-timescale retention
+- [ ] Symplectic integrator (REBOUND/WHFast) for genuine Myr–Gyr retention runs
 ```

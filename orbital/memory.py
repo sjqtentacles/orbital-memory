@@ -6,12 +6,13 @@ barycenter; a massless test body sits in a tadpole orbit around the leading
 (L4) or trailing (L5) triangular Lagrange point. Those two islands are
 separated by a separatrix (the horseshoe region around L3), so a small
 perturbation can't move the body between them — the island it librates in is a
-nonvolatile bit.
+long-lived but metastable bit (deep bits are Nekhoroshev-stable; real Trojans
+are metastable on 10 kyr-100 Myr timescales — Greenstreet et al. 2024).
 
 This is a moon-scale mechanism, not just a toy: Saturn's moons Telesto and
 Calypso sit in the L4/L5 points of Tethys, and Helene/Polydeuces in those of
 Dione. Those co-orbital moons are exactly this cell — real hardware that has
-held its "bit" for the age of the solar system. The dynamics depend only on
+held its "bit" for much of the age of the solar system. The dynamics depend only on
 the mass ratio `mu`, so the same code covers star+planet, planet+moon, and
 moon+co-orbital-moonlet; only the libration timescale (~1/sqrt(mu)) changes.
 

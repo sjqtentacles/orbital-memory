@@ -107,7 +107,7 @@ SUN_JUPITER = System("Sun-Jupiter", 1.989e30, 1.898e27, 5.2044 * AU_M)
 SUN_EARTH = System("Sun-Earth", 1.989e30, 5.972e24, 1.0 * AU_M)
 
 # Saturn's co-orbital moons: Telesto/Calypso ride Tethys, Helene/Polydeuces
-# ride Dione — real hardware that has held its bit for the age of the system.
+# ride Dione — real hardware that has held its bit for much of the system's age.
 SATURN_TETHYS = System("Saturn-Tethys", 5.6834e26, 6.174e20, 2.947e8)
 SATURN_DIONE = System("Saturn-Dione", 5.6834e26, 1.0955e21, 3.774e8)
 
