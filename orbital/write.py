@@ -26,27 +26,54 @@ from . import memory, nbody
 
 # Default insertion geometry.
 AMP0 = 6.0          # deg — default written libration amplitude (a deep bit)
-APPROACH_DA = 0.05  # co-orbital transfer apoapsis offset (sets the burn size)
+APPROACH_DA = 0.15  # transfer apoapsis offset: large enough that the arrival is
+                    # NOT a bit (erased) — the insertion burn is what captures it
+
+
+def _target_and_arrival(bit, amplitude_deg, approach_da, mu):
+    """The target tadpole turning point (position + corotation velocity) and the
+    slower velocity the body has when it COASTS into that point on a co-orbital
+    transfer whose apoapsis touches the ring from `approach_da` inside."""
+    point = "L4" if str(bit) == "1" else "L5"
+    target = memory.make_cell(point, mu=mu, libration_deg=amplitude_deg)
+    P = np.array(target[2]["pos"])
+    v_tadpole = np.array(target[2]["vel"])        # corotation velocity at P
+    r = float(np.linalg.norm(P))
+    that = np.array([-P[1], P[0]]) / r            # prograde tangential unit
+    a_t = r - approach_da / 2.0                    # transfer semi-major axis
+    v_apo = float(np.sqrt(max(2.0 / r - 1.0 / a_t, 0.0)))   # vis-viva at apoapsis
+    v_arrival = v_apo * that
+    return target, P, v_tadpole, v_arrival
+
+
+def arrival_state(bit, amplitude_deg=AMP0, approach_da=APPROACH_DA, mu=memory.MU):
+    """The body at the target point BEFORE the insertion burn: coasting in on
+    the transfer at apoapsis speed. On its own this does NOT hold the bit — it
+    is on a transfer, slower than corotation, so it drifts off the island. The
+    burn is what writes; integrate this to see the difference."""
+    target, P, _, v_arrival = _target_and_arrival(bit, amplitude_deg,
+                                                   approach_da, mu)
+    moon = {"m": 0.0, "pos": P.tolist(), "vel": v_arrival.tolist()}
+    return [dict(target[0]), dict(target[1]), moon]
 
 
 def insert(bit, amplitude_deg=AMP0, approach_da=APPROACH_DA, mu=memory.MU):
-    """Write `bit` by inserting the body into its island.
+    """Write `bit` by ACTUALLY inserting the body into its island.
 
-    Returns (cell, dv): `cell` is [star, planet, moonlet] with the moonlet
-    placed on a tadpole of amplitude ~amplitude_deg around L4 ('1') or L5
-    ('0'); `dv` is the NONDIMENSIONAL insertion-burn magnitude (circularizing
-    a co-orbital transfer that reaches the ring from `approach_da` inside).
-    Convert to m/s with units.System.mps."""
-    point = "L4" if str(bit) == "1" else "L5"
-    cell = memory.make_cell(point, mu=mu, libration_deg=amplitude_deg)
-    r = float(np.linalg.norm(cell[2]["pos"]))     # target radius (~1)
-    # circularization burn: v_circ(r) minus the transfer's apoapsis speed, for a
-    # transfer with apoapsis r and periapsis r - approach_da (G*M_tot = 1).
-    v_circ = np.sqrt(1.0 / r)
-    a_t = r - approach_da / 2.0
-    v_apo = np.sqrt(max(2.0 / r - 1.0 / a_t, 0.0))
-    dv = float(v_circ - v_apo)
-    return cell, dv
+    The body coasts to the target point on a co-orbital transfer (arrival_state)
+    and the insertion burn dv_vec = v_tadpole − v_arrival is APPLIED to its
+    velocity, dropping it onto the tadpole. Returns (cell, dv) where the moonlet
+    velocity is literally v_arrival + dv_vec and `dv` is the magnitude of that
+    applied burn (nondimensional; convert with units.System.mps). The burn is a
+    real velocity change, not an accounting number — arrival_state without it
+    does not read as the bit."""
+    target, P, v_tadpole, v_arrival = _target_and_arrival(bit, amplitude_deg,
+                                                          approach_da, mu)
+    dv_vec = v_tadpole - v_arrival                  # the insertion burn
+    moon = {"m": 0.0, "pos": P.tolist(),
+            "vel": (v_arrival + dv_vec).tolist()}   # burn applied
+    cell = [dict(target[0]), dict(target[1]), moon]
+    return cell, float(np.linalg.norm(dv_vec))
 
 
 def write_bit(bit, amplitude_deg=AMP0, periods=45, n_samples=None,

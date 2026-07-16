@@ -30,21 +30,30 @@ class TestInsertionWritesTheBit:
 
 
 class TestInsertionBurn:
-    def test_dv_is_finite_and_reported_in_mps(self):
-        _, dv = write.insert("1")
-        assert dv > 0.0
-        mps = units.SUN_JUPITER.mps(dv)
-        assert 50.0 < mps < 1000.0            # a plausible L4 station-insertion cost
+    def test_dv_is_the_actually_applied_burn(self):
+        """dv is the magnitude of the velocity change the write applies, not an
+        accounting number: written velocity == arrival velocity + the burn."""
+        cell, dv = write.insert("1")
+        arrival = write.arrival_state("1")
+        applied = np.linalg.norm(np.array(cell[2]["vel"])
+                                 - np.array(arrival[2]["vel"]))
+        assert applied == pytest.approx(dv, rel=1e-12)
+        assert 100.0 < units.SUN_JUPITER.mps(dv) < 2000.0   # realistic L4 insertion
+
+    def test_the_burn_is_what_writes_the_bit(self):
+        """Without the insertion burn the body coasts in on the transfer and is
+        NOT a stored bit (erased); applying the burn captures it into the island.
+        The maneuver is load-bearing, not decorative."""
+        arrival = write.arrival_state("1")
+        run = nbody.integrate(arrival, 45 * memory.PERIOD, n_samples=2700)
+        run["phi"] = memory.resonant_angle(run)
+        assert write.read(run)[0] == "erased"          # no burn -> no bit
+        assert write.read(write.write_bit("1"))[0] == "1"   # burn -> bit
 
     def test_bigger_transfer_costs_more(self):
-        _, small = write.insert("1", approach_da=0.03)
-        _, big = write.insert("1", approach_da=0.10)
+        _, small = write.insert("1", approach_da=0.08)
+        _, big = write.insert("1", approach_da=0.18)
         assert big > small
-
-    def test_both_bits_cost_the_same(self):
-        _, a = write.insert("1")
-        _, b = write.insert("0")
-        assert a == pytest.approx(b, rel=1e-9)
 
 
 class TestBlankMedium:

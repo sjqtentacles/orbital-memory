@@ -56,13 +56,13 @@ Real Jupiter carries two clouds of Trojans — the **Greeks** leading at L4, the
 
 ## WRITE: placing a bit
 
-Writing is *delivering the body into the chosen island* — exactly how you would station a spacecraft at L4/L5. The body arrives on a co-orbital transfer and a single **insertion burn** circularizes it onto the tadpole; the cost is a real Δv, reported in m/s at the Sun–Jupiter scale (~170 m/s for a deep L4 bit):
+Writing is *delivering the body into the chosen island* — exactly how you would station a spacecraft at L4/L5. The body arrives on a co-orbital transfer (on which, coasting, it is **not** a bit — it reads erased) and a single **insertion burn** captures it onto the tadpole; the cost is a real, *actually-applied* Δv (~510 m/s for a deep L4 bit at the Sun–Jupiter scale):
 
 <p align="center">
-  <img src="docs/insert.gif" width="440" alt="A body coasts in on a transfer orbit, an insertion burn flashes, and it settles into a librating tadpole at L4 — bit 1 written for 169 m/s">
+  <img src="docs/insert.gif" width="440" alt="A body coasts in on a transfer orbit, an insertion burn flashes, and it settles into a librating tadpole at L4 — bit 1 written by a real applied delta-v">
 </p>
 
-Insertion into L4 writes **1**, into L5 writes **0**. No planet is grown; the bit is set by where you put the body, and the burn magnitude is the honest cost of putting it there.
+Insertion into L4 writes **1**, into L5 writes **0**. No planet is grown; the burn is a genuine velocity change (`dv = |v_written − v_arrival|`, test-enforced), and it is *load-bearing* — the same body without the burn coasts off the island and reads erased.
 
 ## The phase portrait — why a bit is a bit
 
