@@ -72,6 +72,12 @@ The stored bit is a slow pendulum whose coordinate is the resonant angle `φ` an
   <img src="docs/phase_portrait.png" width="620" alt="Phase portrait: nested tadpole loops around L4 (bit 1) and L5 (bit 0), the horseshoe band, and circulation">
 </p>
 
+The same four families, drawn as orbits in the rotating frame — two tadpole bits, the horseshoe (erased), and free circulation (blank):
+
+<p align="center">
+  <img src="docs/anatomy.png" width="520" alt="Rotating-frame orbit families: cyan tadpole at L4, pink tadpole at L5, amber horseshoe sweeping the ring, dashed grey circulation">
+</p>
+
 ## Cooling: deeper, harder bits
 
 A freshly placed bit can librate wide. `orbital/cool.py` tightens it the way a real co-orbital spacecraft would — **tangential station-keeping burns**, a few m/s each (capped at `0.008`; the erase threshold is `0.035`). The tadpole is a slow pendulum whose momentum is `da = r − 1`; burns at mid-swing damp it, taking **±62° to under 30° in a couple of burns**:
